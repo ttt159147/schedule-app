@@ -721,13 +721,36 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   function updateItem(id, patch) {
     commit(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }
+  function moveItem(index, dir) {
+    const target = index + dir;
+    if (target < 0 || target >= list.length) return;
+    const next = [...list];
+    [next[index], next[target]] = [next[target], next[index]];
+    commit(next);
+  }
 
   return (
     <Modal onClose={onClose}>
       <h3>服装項目（定型文）の管理</h3>
       <div className="presetmanagerlist">
-        {list.map((p) => (
+        {list.map((p, i) => (
           <div key={p.id} className="presetmanageritem">
+            <div className="reorderbtns">
+              <button
+                className="reorderbtn"
+                disabled={i === 0}
+                onClick={() => moveItem(i, -1)}
+              >
+                ▲
+              </button>
+              <button
+                className="reorderbtn"
+                disabled={i === list.length - 1}
+                onClick={() => moveItem(i, 1)}
+              >
+                ▼
+              </button>
+            </div>
             <span className="evcolor" style={{ background: p.color }} />
             <input
               className="finput inline"
@@ -890,13 +913,36 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
   function updateItem(id, patch) {
     commit(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }
+  function moveItem(index, dir) {
+    const target = index + dir;
+    if (target < 0 || target >= list.length) return;
+    const next = [...list];
+    [next[index], next[target]] = [next[target], next[index]];
+    commit(next);
+  }
 
   return (
     <Modal onClose={onClose}>
       <h3>{title}</h3>
       <div className="presetmanagerlist">
-        {list.map((p) => (
+        {list.map((p, i) => (
           <div key={p.id} className="presetmanageritem">
+            <div className="reorderbtns">
+              <button
+                className="reorderbtn"
+                disabled={i === 0}
+                onClick={() => moveItem(i, -1)}
+              >
+                ▲
+              </button>
+              <button
+                className="reorderbtn"
+                disabled={i === list.length - 1}
+                onClick={() => moveItem(i, 1)}
+              >
+                ▼
+              </button>
+            </div>
             <span className="evcolor" style={{ background: p.color }} />
             <input
               className="finput inline"
@@ -1166,6 +1212,19 @@ function Style() {
 
       .presetmanagerlist { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
       .presetmanageritem { display: flex; align-items: center; gap: 6px; }
+      .reorderbtns { display: flex; flex-direction: column; gap: 2px; }
+      .reorderbtn {
+        border: 1px solid #ddd;
+        background: #fff;
+        width: 22px;
+        height: 18px;
+        font-size: 9px;
+        line-height: 1;
+        padding: 0;
+        border-radius: 4px;
+        color: #777;
+      }
+      .reorderbtn:disabled { opacity: 0.3; }
       .addpresetrow { display: flex; gap: 6px; margin-top: 12px; }
 
       .statsfilters { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
