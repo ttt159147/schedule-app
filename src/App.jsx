@@ -343,8 +343,8 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           date={fmtDate(cursor)}
           events={eventsByDate[fmtDate(cursor)] || []}
           onEdit={(ev) => setEditingEvent(ev)}
-          onAddAtHour={(hour) => {
-            setAddPrefillTime(`${pad(hour)}:00`);
+          onAddAtHour={(hour, minute) => {
+            setAddPrefillTime(`${pad(hour)}:${pad(minute)}`);
             setShowAdd(true);
           }}
         />
@@ -561,7 +561,16 @@ function HourGrid({ date, events, onEdit, onAddAtHour }) {
         {hours.map((h) => {
           const evs = eventsForHour(h);
           return (
-            <div key={h} className="hourrow" onClick={() => onAddAtHour(h)}>
+            <div
+              key={h}
+              className="hourrow"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const frac = (e.clientY - rect.top) / rect.height;
+                const minute = frac < 0.25 ? 0 : frac < 0.5 ? 15 : frac < 0.75 ? 30 : 45;
+                onAddAtHour(h, minute);
+              }}
+            >
               <div className="hourlabel">{pad(h)}:00</div>
               <div className="hourslot">
                 {evs.map((e) => (
