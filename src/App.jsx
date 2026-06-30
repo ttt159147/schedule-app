@@ -6,7 +6,7 @@ const EVENT_COLORS = [
   "#e57373", "#f06292", "#ba68c8", "#9575cd",
   "#7986cb", "#64b5f6", "#4fc3f7", "#4dd0e1",
   "#4db6ac", "#81c784", "#aed581", "#ffd54f",
-  "#ffb74d", "#a1887f",
+  "#ffb74d", "#a1887f", "#212121", "#1a237e", "#616161",
 ];
 
 const CLOTHING_COLORS = [
@@ -93,7 +93,73 @@ function saveLS(key, value) {
   }
 }
 
-/* ===================== メインコンポーネント ===================== */
+function reorderArray(arr, from, to) {
+  const next = [...arr];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+/* ドラッグで並べ替え可能なリストを実現するフック */
+function useDragReorder(list, commit) {
+  const itemRefs = React.useRef([]);
+  const [draggingIndex, setDraggingIndex] = useState(null);
+
+  function startDrag(e, index) {
+    e.preventDefault();
+    setDraggingIndex(index);
+  }
+
+  useEffect(() => {
+    if (draggingIndex === null) return;
+    function onMove(e) {
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      let target = list.length - 1;
+      for (let i = 0; i < itemRefs.current.length; i++) {
+        const el = itemRefs.current[i];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (y < rect.top + rect.height / 2) {
+          target = i;
+          break;
+        }
+      }
+      if (target !== draggingIndex) {
+        commit(reorderArray(list, draggingIndex, target));
+        setDraggingIndex(target);
+      }
+    }
+    function onUp() {
+      setDraggingIndex(null);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [draggingIndex, list, commit]);
+
+  return { itemRefs, draggingIndex, startDrag };
+}
+
+function DragHandle({ onPointerDown, onTouchStart }) {
+  return (
+    <span
+      className="draghandle"
+      onPointerDown={onPointerDown}
+      onTouchStart={onTouchStart}
+    >
+      ⋮⋮
+    </span>
+  );
+}
+
+
 
 export default function App() {
   const [tab, setTab] = useState("calendar"); // calendar | clothing
@@ -170,6 +236,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null); // event object or null
   const [showAdd, setShowAdd] = useState(false);
+  const [addPrefillTime, setAddPrefillTime] = useState("");
 
   const eventsByDate = useMemo(() => {
     const map = {};
@@ -265,33 +332,61 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
         />
       )}
       {view === "day" && (
-        <div className="daystrip">
-          <div
-            className="daystripcell selected"
-            onClick={() => setSelectedDate(fmtDate(cursor))}
-          >
-            <div className="dow">{DOW[cursor.getDay()]}</div>
-            <div className="dnum">{cursor.getDate()}</div>
-          </div>
-        </div>
+        <HourGrid
+          date={fmtDate(cursor)}
+          events={eventsByDate[fmtDate(cursor)] || []}
+          onEdit={(ev) => setEditingEvent(ev)}
+          onAddAtHour={(hour) => {
+            setAddPrefillTime(`${pad(hour)}:00`);
+            setShowAdd(true);
+          }}
+        />
       )}
 
-      <DayPanel
-        date={view === "day" ? fmtDate(cursor) : selectedDate}
-        events={eventsByDate[view === "day" ? fmtDate(cursor) : selectedDate] || []}
-        presets={presets}
-        onQuickAdd={(preset) =>
-          addEvent({
-            date: view === "day" ? fmtDate(cursor) : selectedDate,
-            title: preset.name,
-            color: preset.color,
-            time: "",
-          })
-        }
-        onAddCustom={() => setShowAdd(true)}
-        onEdit={(ev) => setEditingEvent(ev)}
-        onDelete={deleteEvent}
-      />
+      {view !== "day" && (
+        <DayPanel
+          date={selectedDate}
+          events={eventsByDate[selectedDate] || []}
+          presets={presets}
+          onQuickAdd={(preset) =>
+            addEvent({
+              date: selectedDate,
+              title: preset.name,
+              color: preset.color,
+              time: "",
+            })
+          }
+          onAddCustom={() => {
+            setAddPrefillTime("");
+            setShowAdd(true);
+          }}
+          onEdit={(ev) => setEditingEvent(ev)}
+          onDelete={deleteEvent}
+        />
+      )}
+
+      {view === "day" && (
+        <DayPanel
+          date={fmtDate(cursor)}
+          events={[]}
+          presets={presets}
+          onQuickAdd={(preset) =>
+            addEvent({
+              date: fmtDate(cursor),
+              title: preset.name,
+              color: preset.color,
+              time: "",
+            })
+          }
+          onAddCustom={() => {
+            setAddPrefillTime("");
+            setShowAdd(true);
+          }}
+          onEdit={(ev) => setEditingEvent(ev)}
+          onDelete={deleteEvent}
+          presetOnly
+        />
+      )}
 
       {showAdd && (
         <EventEditModal
@@ -299,7 +394,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
             date: view === "day" ? fmtDate(cursor) : selectedDate,
             title: "",
             color: EVENT_COLORS[0],
-            time: "",
+            time: addPrefillTime,
           }}
           onCancel={() => setShowAdd(false)}
           onSave={(data) => {
@@ -414,7 +509,7 @@ function WeekGrid({ cursor, eventsByDate, selectedDate, onSelect }) {
             <div className="dow">{DOW[d.getDay()]}</div>
             <div className="dnum">{d.getDate()}</div>
             <div className="weekevs">
-              {evs.slice(0, 4).map((e) => (
+              {evs.slice(0, 5).map((e) => (
                 <div
                   key={e.id}
                   className="weekevchip"
@@ -430,32 +525,93 @@ function WeekGrid({ cursor, eventsByDate, selectedDate, onSelect }) {
   );
 }
 
-function DayPanel({ date, events, presets, onQuickAdd, onAddCustom, onEdit, onDelete }) {
+function HourGrid({ date, events, onEdit, onAddAtHour }) {
+  const allDay = events.filter((e) => !e.time);
+  const timed = events.filter((e) => e.time);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  function eventsForHour(h) {
+    return timed.filter((e) => {
+      const hh = parseInt(e.time.split(":")[0], 10);
+      return hh === h;
+    });
+  }
+
+  return (
+    <div className="hourgridwrap">
+      {allDay.length > 0 && (
+        <div className="allday-section">
+          <div className="allday-label">終日</div>
+          {allDay.map((e) => (
+            <div key={e.id} className="evitem" onClick={() => onEdit(e)}>
+              <span className="evcolor" style={{ background: e.color }} />
+              <span className="evtitle">{e.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="hourgrid">
+        {hours.map((h) => {
+          const evs = eventsForHour(h);
+          return (
+            <div key={h} className="hourrow" onClick={() => onAddAtHour(h)}>
+              <div className="hourlabel">{pad(h)}:00</div>
+              <div className="hourslot">
+                {evs.map((e) => (
+                  <div
+                    key={e.id}
+                    className="hourevent"
+                    style={{ background: e.color }}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onEdit(e);
+                    }}
+                  >
+                    <span className="houreventtime">{e.time}</span>
+                    <span className="houreventtitle">{e.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function DayPanel({ date, events, presets, onQuickAdd, onAddCustom, onEdit, onDelete, presetOnly }) {
   if (!date) return null;
   const d = parseDate(date);
   return (
     <div className="daypanel">
-      <div className="daypanel-title">{fmtJpDate(d)}</div>
+      {!presetOnly && <div className="daypanel-title">{fmtJpDate(d)}</div>}
+      {presetOnly && <div className="daypanel-title">よく使う項目から追加</div>}
 
-      {events.length === 0 && <div className="empty">予定はありません</div>}
-      <div className="evlist">
-        {events.map((e) => (
-          <div key={e.id} className="evitem" onClick={() => onEdit(e)}>
-            <span className="evcolor" style={{ background: e.color }} />
-            <span className="evtime">{e.time || ""}</span>
-            <span className="evtitle">{e.title}</span>
-            <button
-              className="evdel"
-              onClick={(ev) => {
-                ev.stopPropagation();
-                onDelete(e.id);
-              }}
-            >
-              ✕
-            </button>
+      {!presetOnly && (
+        <>
+          {events.length === 0 && <div className="empty">予定はありません</div>}
+          <div className="evlist">
+            {events.map((e) => (
+              <div key={e.id} className="evitem" onClick={() => onEdit(e)}>
+                <span className="evcolor" style={{ background: e.color }} />
+                <span className="evtime">{e.time || ""}</span>
+                <span className="evtitle">{e.title}</span>
+                <button
+                  className="evdel"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    onDelete(e.id);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
       <div className="presetrow">
         {presets.map((p) => (
@@ -711,6 +867,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
     onSave(next);
   }
 
+  const { itemRefs, draggingIndex, startDrag } = useDragReorder(list, commit);
+
   function addItem() {
     if (!newName.trim()) return;
     commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor }]);
@@ -722,37 +880,22 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   function updateItem(id, patch) {
     commit(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }
-  function moveItem(index, dir) {
-    const target = index + dir;
-    if (target < 0 || target >= list.length) return;
-    const next = [...list];
-    [next[index], next[target]] = [next[target], next[index]];
-    commit(next);
-  }
 
   return (
     <Modal onClose={onClose}>
       <h3>服装項目（定型文）の管理</h3>
       <div className="presetmanagerlist">
         {list.map((p, i) => (
-          <div key={p.id}>
+          <div
+            key={p.id}
+            ref={(el) => (itemRefs.current[i] = el)}
+            className={draggingIndex === i ? "dragging" : ""}
+          >
             <div className="presetmanageritem">
-              <div className="reorderbtns">
-                <button
-                  className="reorderbtn"
-                  disabled={i === 0}
-                  onClick={() => moveItem(i, -1)}
-                >
-                  ▲
-                </button>
-                <button
-                  className="reorderbtn"
-                  disabled={i === list.length - 1}
-                  onClick={() => moveItem(i, 1)}
-                >
-                  ▼
-                </button>
-              </div>
+              <DragHandle
+                onPointerDown={(e) => startDrag(e, i)}
+                onTouchStart={(e) => startDrag(e, i)}
+              />
               <button
                 className="evcolor colorbtn"
                 style={{ background: p.color }}
@@ -926,6 +1069,9 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
     setList(next);
     onSave(next);
   }
+
+  const { itemRefs, draggingIndex, startDrag } = useDragReorder(list, commit);
+
   function addItem() {
     if (!newName.trim()) return;
     commit([...list, { id: uid(), name: newName.trim(), color: newColor }]);
@@ -937,37 +1083,22 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
   function updateItem(id, patch) {
     commit(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }
-  function moveItem(index, dir) {
-    const target = index + dir;
-    if (target < 0 || target >= list.length) return;
-    const next = [...list];
-    [next[index], next[target]] = [next[target], next[index]];
-    commit(next);
-  }
 
   return (
     <Modal onClose={onClose}>
       <h3>{title}</h3>
       <div className="presetmanagerlist">
         {list.map((p, i) => (
-          <div key={p.id}>
+          <div
+            key={p.id}
+            ref={(el) => (itemRefs.current[i] = el)}
+            className={draggingIndex === i ? "dragging" : ""}
+          >
             <div className="presetmanageritem">
-              <div className="reorderbtns">
-                <button
-                  className="reorderbtn"
-                  disabled={i === 0}
-                  onClick={() => moveItem(i, -1)}
-                >
-                  ▲
-                </button>
-                <button
-                  className="reorderbtn"
-                  disabled={i === list.length - 1}
-                  onClick={() => moveItem(i, 1)}
-                >
-                  ▼
-                </button>
-              </div>
+              <DragHandle
+                onPointerDown={(e) => startDrag(e, i)}
+                onTouchStart={(e) => startDrag(e, i)}
+              />
               <button
                 className="evcolor colorbtn"
                 style={{ background: p.color }}
@@ -1167,6 +1298,31 @@ function Style() {
       .daystripcell .dow { font-size: 11px; color: #999; }
       .daystripcell .dnum { font-size: 16px; font-weight: bold; }
 
+      .hourgridwrap { background: #fff; border-radius: 10px; padding: 10px; }
+      .allday-section { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+      .allday-label { font-size: 11px; color: #999; margin-bottom: 4px; }
+      .hourgrid { display: flex; flex-direction: column; }
+      .hourrow {
+        display: flex;
+        align-items: flex-start;
+        min-height: 44px;
+        border-top: 1px solid #f0f0f0;
+        padding: 4px 0;
+      }
+      .hourrow:first-child { border-top: none; }
+      .hourlabel { width: 48px; flex-shrink: 0; font-size: 11px; color: #aaa; padding-top: 4px; }
+      .hourslot { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+      .hourevent {
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #fff;
+        display: flex;
+        gap: 6px;
+        text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+      }
+      .houreventtime { opacity: 0.85; }
+
       .daypanel {
         background: #fff;
         border-radius: 10px;
@@ -1268,19 +1424,16 @@ function Style() {
 
       .presetmanagerlist { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
       .presetmanageritem { display: flex; align-items: center; gap: 6px; }
-      .reorderbtns { display: flex; flex-direction: column; gap: 2px; }
-      .reorderbtn {
-        border: 1px solid #ddd;
-        background: #fff;
-        width: 22px;
-        height: 18px;
-        font-size: 9px;
-        line-height: 1;
-        padding: 0;
-        border-radius: 4px;
-        color: #777;
+      .draghandle {
+        cursor: grab;
+        touch-action: none;
+        color: #bbb;
+        font-size: 16px;
+        padding: 4px 2px;
+        user-select: none;
+        flex-shrink: 0;
       }
-      .reorderbtn:disabled { opacity: 0.3; }
+      .dragging { opacity: 0.5; background: #f0f8ff; border-radius: 8px; }
       .addpresetrow { display: flex; gap: 6px; margin-top: 12px; }
 
       .statsfilters { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
