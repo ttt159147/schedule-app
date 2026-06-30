@@ -238,6 +238,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addPrefillTime, setAddPrefillTime] = useState("");
   const [timeSlotPicker, setTimeSlotPicker] = useState(null); // "HH:MM" or null
+  const [pendingPreset, setPendingPreset] = useState(null); // { preset, date } or null
 
   const eventsByDate = useMemo(() => {
     const map = {};
@@ -356,14 +357,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           date={selectedDate}
           events={eventsByDate[selectedDate] || []}
           presets={presets}
-          onQuickAdd={(preset) =>
-            addEvent({
-              date: selectedDate,
-              title: preset.name,
-              color: preset.color,
-              time: "",
-            })
-          }
+          onQuickAdd={(preset) => setPendingPreset({ preset, date: selectedDate })}
           onAddCustom={() => {
             setAddPrefillTime("");
             setShowAdd(true);
@@ -430,6 +424,22 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
             setAddPrefillTime(timeSlotPicker);
             setTimeSlotPicker(null);
             setShowAdd(true);
+          }}
+        />
+      )}
+
+      {pendingPreset && (
+        <PresetTimeModal
+          preset={pendingPreset.preset}
+          onCancel={() => setPendingPreset(null)}
+          onSave={(time) => {
+            addEvent({
+              date: pendingPreset.date,
+              title: pendingPreset.preset.name,
+              color: pendingPreset.preset.color,
+              time,
+            });
+            setPendingPreset(null);
           }}
         />
       )}
@@ -747,6 +757,7 @@ function EventEditModal({ initial, isEdit, onCancel, onSave, onDelete }) {
         onChange={(e) => setDate(e.target.value)}
         className="finput"
       />
+      <div className="dateweekdayhint">{fmtJpDate(parseDate(date))}</div>
       <label className="flabel">タイトル</label>
       <input
         type="text"
@@ -1285,6 +1296,28 @@ function TimeSlotPresetModal({ time, presets, onCancel, onQuickAdd, onCustom }) 
   );
 }
 
+function PresetTimeModal({ preset, onCancel, onSave }) {
+  const [time, setTime] = useState("");
+  return (
+    <Modal onClose={onCancel}>
+      <h3>「{preset.name}」の時刻</h3>
+      <label className="flabel">時刻（任意・指定しなければ終日になります）</label>
+      <input
+        type="time"
+        className="finput"
+        value={time}
+        onChange={(e) => setTime(e.target.value)}
+      />
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onCancel}>キャンセル</button>
+        <button className="btn primary" onClick={() => onSave(time)}>
+          保存
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function Modal({ children, onClose }) {
   return (
     <div className="modaloverlay" onClick={onClose}>
@@ -1532,6 +1565,7 @@ function Style() {
         margin-top: 4px;
       }
       .finput.inline { width: auto; flex: 1; margin-top: 0; }
+      .dateweekdayhint { font-size: 12px; color: #4fc3f7; font-weight: bold; margin-top: 4px; }
       .finput.select { flex: 0 0 70px; }
 
       .colorgrid {
