@@ -295,7 +295,14 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           <button
             key={v}
             className={view === v ? "vbtn active" : "vbtn"}
-            onClick={() => setView(v)}
+            onClick={() => {
+              if (v === "day") {
+                setCursor(parseDate(selectedDate));
+              } else if (view === "day") {
+                setSelectedDate(fmtDate(cursor));
+              }
+              setView(v);
+            }}
           >
             {v === "day" ? "日" : v === "week" ? "週" : "月"}
           </button>
