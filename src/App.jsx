@@ -237,6 +237,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
   const [editingEvent, setEditingEvent] = useState(null); // event object or null
   const [showAdd, setShowAdd] = useState(false);
   const [addPrefillTime, setAddPrefillTime] = useState("");
+  const [timeSlotPicker, setTimeSlotPicker] = useState(null); // "HH:MM" or null
 
   const eventsByDate = useMemo(() => {
     const map = {};
@@ -344,8 +345,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           events={eventsByDate[fmtDate(cursor)] || []}
           onEdit={(ev) => setEditingEvent(ev)}
           onAddAtHour={(hour, minute) => {
-            setAddPrefillTime(`${pad(hour)}:${pad(minute)}`);
-            setShowAdd(true);
+            setTimeSlotPicker(`${pad(hour)}:${pad(minute)}`);
           }}
         />
       )}
@@ -407,6 +407,28 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           onSave={(data) => {
             addEvent(data);
             setShowAdd(false);
+          }}
+        />
+      )}
+
+      {timeSlotPicker && (
+        <TimeSlotPresetModal
+          time={timeSlotPicker}
+          presets={presets}
+          onCancel={() => setTimeSlotPicker(null)}
+          onQuickAdd={(preset) => {
+            addEvent({
+              date: fmtDate(cursor),
+              title: preset.name,
+              color: preset.color,
+              time: timeSlotPicker,
+            });
+            setTimeSlotPicker(null);
+          }}
+          onCustom={() => {
+            setAddPrefillTime(timeSlotPicker);
+            setTimeSlotPicker(null);
+            setShowAdd(true);
           }}
         />
       )}
@@ -1175,6 +1197,32 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
 }
 
 /* ===================== 共通モーダル ===================== */
+
+function TimeSlotPresetModal({ time, presets, onCancel, onQuickAdd, onCustom }) {
+  return (
+    <Modal onClose={onCancel}>
+      <h3>{time} の予定を追加</h3>
+      <div className="presetrow">
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            className="presetchip"
+            style={{ background: p.color }}
+            onClick={() => onQuickAdd(p)}
+          >
+            {p.name}
+          </button>
+        ))}
+        <button className="presetchip addchip" onClick={onCustom}>
+          ＋ カスタム入力
+        </button>
+      </div>
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onCancel}>キャンセル</button>
+      </div>
+    </Modal>
+  );
+}
 
 function Modal({ children, onClose }) {
   return (
