@@ -13,7 +13,7 @@ const CLOTHING_COLORS = [
   "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
   "#8c9eff", "#82b1ff", "#80d8ff", "#84ffff",
   "#a7ffeb", "#b9f6ca", "#ccff90", "#ffe57f",
-  "#ffd180", "#bcaaa4",
+  "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161",
 ];
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
@@ -704,6 +704,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("top");
   const [newColor, setNewColor] = useState(CLOTHING_COLORS[0]);
+  const [colorEditId, setColorEditId] = useState(null);
 
   function commit(next) {
     setList(next);
@@ -734,38 +735,60 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
       <h3>服装項目（定型文）の管理</h3>
       <div className="presetmanagerlist">
         {list.map((p, i) => (
-          <div key={p.id} className="presetmanageritem">
-            <div className="reorderbtns">
+          <div key={p.id}>
+            <div className="presetmanageritem">
+              <div className="reorderbtns">
+                <button
+                  className="reorderbtn"
+                  disabled={i === 0}
+                  onClick={() => moveItem(i, -1)}
+                >
+                  ▲
+                </button>
+                <button
+                  className="reorderbtn"
+                  disabled={i === list.length - 1}
+                  onClick={() => moveItem(i, 1)}
+                >
+                  ▼
+                </button>
+              </div>
               <button
-                className="reorderbtn"
-                disabled={i === 0}
-                onClick={() => moveItem(i, -1)}
+                className="evcolor colorbtn"
+                style={{ background: p.color }}
+                onClick={() => setColorEditId(colorEditId === p.id ? null : p.id)}
+                title="色を変更"
+              />
+              <input
+                className="finput inline"
+                value={p.name}
+                onChange={(e) => updateItem(p.id, { name: e.target.value })}
+              />
+              <select
+                className="finput inline select"
+                value={p.type}
+                onChange={(e) => updateItem(p.id, { type: e.target.value })}
               >
-                ▲
-              </button>
-              <button
-                className="reorderbtn"
-                disabled={i === list.length - 1}
-                onClick={() => moveItem(i, 1)}
-              >
-                ▼
-              </button>
+                <option value="top">上</option>
+                <option value="bottom">下</option>
+              </select>
+              <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
-            <span className="evcolor" style={{ background: p.color }} />
-            <input
-              className="finput inline"
-              value={p.name}
-              onChange={(e) => updateItem(p.id, { name: e.target.value })}
-            />
-            <select
-              className="finput inline select"
-              value={p.type}
-              onChange={(e) => updateItem(p.id, { type: e.target.value })}
-            >
-              <option value="top">上</option>
-              <option value="bottom">下</option>
-            </select>
-            <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
+            {colorEditId === p.id && (
+              <div className="colorgrid inlineColorEdit">
+                {CLOTHING_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={"colorswatch" + (c === p.color ? " selected" : "")}
+                    style={{ background: c }}
+                    onClick={() => {
+                      updateItem(p.id, { color: c });
+                      setColorEditId(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -897,6 +920,7 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
   const [list, setList] = useState(presets);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(colors[0]);
+  const [colorEditId, setColorEditId] = useState(null);
 
   function commit(next) {
     setList(next);
@@ -926,30 +950,52 @@ function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
       <h3>{title}</h3>
       <div className="presetmanagerlist">
         {list.map((p, i) => (
-          <div key={p.id} className="presetmanageritem">
-            <div className="reorderbtns">
+          <div key={p.id}>
+            <div className="presetmanageritem">
+              <div className="reorderbtns">
+                <button
+                  className="reorderbtn"
+                  disabled={i === 0}
+                  onClick={() => moveItem(i, -1)}
+                >
+                  ▲
+                </button>
+                <button
+                  className="reorderbtn"
+                  disabled={i === list.length - 1}
+                  onClick={() => moveItem(i, 1)}
+                >
+                  ▼
+                </button>
+              </div>
               <button
-                className="reorderbtn"
-                disabled={i === 0}
-                onClick={() => moveItem(i, -1)}
-              >
-                ▲
-              </button>
-              <button
-                className="reorderbtn"
-                disabled={i === list.length - 1}
-                onClick={() => moveItem(i, 1)}
-              >
-                ▼
-              </button>
+                className="evcolor colorbtn"
+                style={{ background: p.color }}
+                onClick={() => setColorEditId(colorEditId === p.id ? null : p.id)}
+                title="色を変更"
+              />
+              <input
+                className="finput inline"
+                value={p.name}
+                onChange={(e) => updateItem(p.id, { name: e.target.value })}
+              />
+              <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
-            <span className="evcolor" style={{ background: p.color }} />
-            <input
-              className="finput inline"
-              value={p.name}
-              onChange={(e) => updateItem(p.id, { name: e.target.value })}
-            />
-            <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
+            {colorEditId === p.id && (
+              <div className="colorgrid inlineColorEdit">
+                {colors.map((c) => (
+                  <button
+                    key={c}
+                    className={"colorswatch" + (c === p.color ? " selected" : "")}
+                    style={{ background: c }}
+                    onClick={() => {
+                      updateItem(p.id, { color: c });
+                      setColorEditId(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1141,6 +1187,16 @@ function Style() {
         font-size: 13px;
       }
       .evcolor { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .colorbtn {
+        width: 22px; height: 22px; border: 2px solid #fff; box-shadow: 0 0 0 1px #ddd;
+        cursor: pointer; padding: 0; flex-shrink: 0;
+      }
+      .inlineColorEdit {
+        margin: 4px 0 8px 36px;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
       .evtime { color: #888; font-size: 12px; min-width: 38px; }
       .evtitle { flex: 1; }
       .statstype { color: #999; font-size: 11px; margin-left: 4px; }
