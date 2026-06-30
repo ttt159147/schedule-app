@@ -344,6 +344,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           date={fmtDate(cursor)}
           events={eventsByDate[fmtDate(cursor)] || []}
           onEdit={(ev) => setEditingEvent(ev)}
+          onMoveEvent={(id, time) => updateEvent(id, { time })}
           onAddAtHour={(hour, minute) => {
             setTimeSlotPicker(`${pad(hour)}:${pad(minute)}`);
           }}
@@ -554,10 +555,13 @@ function WeekGrid({ cursor, eventsByDate, selectedDate, onSelect }) {
   );
 }
 
-function HourGrid({ date, events, onEdit, onAddAtHour }) {
+function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
   const allDay = events.filter((e) => !e.time);
   const timed = events.filter((e) => e.time);
   const hours = Array.from({ length: 24 }, (_, i) => i);
+  const [draggingId, setDraggingId] = useState(null);
+  const dragStartY = React.useRef(0);
+  const draggingEventRef = React.useRef(null);
 
   function eventsForHour(h) {
     return timed.filter((e) => {
@@ -566,13 +570,65 @@ function HourGrid({ date, events, onEdit, onAddAtHour }) {
     });
   }
 
+  function getPoint(e) {
+    return e.touches ? e.touches[0] : e;
+  }
+
+  function startDrag(e, ev) {
+    e.preventDefault();
+    const pt = getPoint(e);
+    dragStartY.current = pt.clientY;
+    draggingEventRef.current = ev;
+    setDraggingId(ev.id);
+  }
+
+  useEffect(() => {
+    if (!draggingId) return;
+    function onMove(e) {
+      e.preventDefault();
+    }
+    function onUp(e) {
+      const pt = getPoint(e);
+      const deltaY = Math.abs(pt.clientY - dragStartY.current);
+      if (deltaY < 6) {
+        onEdit(draggingEventRef.current);
+      } else {
+        const el = document.elementFromPoint(pt.clientX, pt.clientY);
+        const row = el && el.closest && el.closest(".hourrow");
+        if (row) {
+          const h = parseInt(row.getAttribute("data-hour"), 10);
+          const rect = row.getBoundingClientRect();
+          const frac = (pt.clientY - rect.top) / rect.height;
+          const minute = frac < 0.25 ? 0 : frac < 0.5 ? 15 : frac < 0.75 ? 30 : 45;
+          onMoveEvent(draggingEventRef.current.id, `${pad(h)}:${pad(minute)}`);
+        }
+      }
+      setDraggingId(null);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [draggingId, onEdit, onMoveEvent]);
+
   return (
     <div className="hourgridwrap">
       {allDay.length > 0 && (
         <div className="allday-section">
-          <div className="allday-label">終日</div>
+          <div className="allday-label">終日（タップで編集／長押しして時間枠へドラッグ）</div>
           {allDay.map((e) => (
-            <div key={e.id} className="evitem" onClick={() => onEdit(e)}>
+            <div
+              key={e.id}
+              className={"evitem" + (draggingId === e.id ? " dragging" : "")}
+              onPointerDown={(ev) => startDrag(ev, e)}
+              onTouchStart={(ev) => startDrag(ev, e)}
+            >
               <span className="evcolor" style={{ background: e.color }} />
               <span className="evtitle">{e.title}</span>
             </div>
@@ -586,6 +642,7 @@ function HourGrid({ date, events, onEdit, onAddAtHour }) {
             <div
               key={h}
               className="hourrow"
+              data-hour={h}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const frac = (e.clientY - rect.top) / rect.height;
@@ -598,11 +655,15 @@ function HourGrid({ date, events, onEdit, onAddAtHour }) {
                 {evs.map((e) => (
                   <div
                     key={e.id}
-                    className="hourevent"
+                    className={"hourevent" + (draggingId === e.id ? " dragging" : "")}
                     style={{ background: e.color }}
-                    onClick={(ev) => {
+                    onPointerDown={(ev) => {
                       ev.stopPropagation();
-                      onEdit(e);
+                      startDrag(ev, e);
+                    }}
+                    onTouchStart={(ev) => {
+                      ev.stopPropagation();
+                      startDrag(ev, e);
                     }}
                   >
                     <span className="houreventtime">{e.time}</span>
@@ -1384,7 +1445,15 @@ function Style() {
         display: flex;
         gap: 6px;
         text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+        touch-action: none;
+        cursor: grab;
       }
+      .hourevent.dragging, .evitem.dragging {
+        opacity: 0.5;
+        outline: 2px dashed #4fc3f7;
+      }
+      .allday-section .evitem { touch-action: none; cursor: grab; }
+      .allday-label { display: block; }
       .houreventtime { opacity: 0.85; }
 
       .daypanel {
