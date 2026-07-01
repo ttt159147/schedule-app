@@ -346,6 +346,7 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           events={eventsByDate[fmtDate(cursor)] || []}
           onEdit={(ev) => setEditingEvent(ev)}
           onMoveEvent={(id, time) => updateEvent(id, { time })}
+          onToggleDone={(id) => updateEvent(id, { done: !((eventsByDate[fmtDate(cursor)] || []).find(e => e.id === id) || {}).done })}
           onAddAtHour={(hour, minute) => {
             setTimeSlotPicker(`${pad(hour)}:${pad(minute)}`);
           }}
@@ -364,6 +365,10 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
           }}
           onEdit={(ev) => setEditingEvent(ev)}
           onDelete={deleteEvent}
+          onToggleDone={(id) => {
+            const ev = (eventsByDate[selectedDate] || []).find(e => e.id === id);
+            if (ev) updateEvent(id, { done: !ev.done });
+          }}
         />
       )}
 
@@ -565,7 +570,7 @@ function WeekGrid({ cursor, eventsByDate, selectedDate, onSelect }) {
   );
 }
 
-function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
+function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent, onToggleDone }) {
   const allDay = events.filter((e) => !e.time);
   const timed = events.filter((e) => e.time);
   const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -635,11 +640,15 @@ function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
           {allDay.map((e) => (
             <div
               key={e.id}
-              className={"evitem" + (draggingId === e.id ? " dragging" : "")}
+              className={"evitem" + (draggingId === e.id ? " dragging" : "") + (e.done ? " ev-done" : "")}
               onPointerDown={(ev) => startDrag(ev, e)}
               onTouchStart={(ev) => startDrag(ev, e)}
             >
-              <span className="evcolor" style={{ background: e.color }} />
+              <button
+                className={"evcheck" + (e.done ? " checked" : "")}
+                onClick={(ev) => { ev.stopPropagation(); onToggleDone(e.id); }}
+              >{e.done ? "✓" : ""}</button>
+              <span className="evcolor" style={{ background: e.color, opacity: e.done ? 0.4 : 1 }} />
               <span className="evtitle">{e.title}</span>
             </div>
           ))}
@@ -665,8 +674,8 @@ function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
                 {evs.map((e) => (
                   <div
                     key={e.id}
-                    className={"hourevent" + (draggingId === e.id ? " dragging" : "")}
-                    style={{ background: e.color }}
+                    className={"hourevent" + (draggingId === e.id ? " dragging" : "") + (e.done ? " ev-done-chip" : "")}
+                    style={{ background: e.color, opacity: e.done ? 0.5 : 1 }}
                     onPointerDown={(ev) => {
                       ev.stopPropagation();
                       startDrag(ev, e);
@@ -676,8 +685,12 @@ function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
                       startDrag(ev, e);
                     }}
                   >
+                    <button
+                      className={"evcheck light" + (e.done ? " checked" : "")}
+                      onClick={(ev) => { ev.stopPropagation(); onToggleDone(e.id); }}
+                    >{e.done ? "✓" : ""}</button>
                     <span className="houreventtime">{e.time}</span>
-                    <span className="houreventtitle">{e.title}</span>
+                    <span className="houreventtitle" style={{ textDecoration: e.done ? "line-through" : "none" }}>{e.title}</span>
                   </div>
                 ))}
               </div>
@@ -690,7 +703,7 @@ function HourGrid({ date, events, onEdit, onAddAtHour, onMoveEvent }) {
 }
 
 
-function DayPanel({ date, events, presets, onQuickAdd, onAddCustom, onEdit, onDelete, presetOnly }) {
+function DayPanel({ date, events, presets, onQuickAdd, onAddCustom, onEdit, onDelete, onToggleDone, presetOnly }) {
   if (!date) return null;
   const d = parseDate(date);
   return (
@@ -703,8 +716,18 @@ function DayPanel({ date, events, presets, onQuickAdd, onAddCustom, onEdit, onDe
           {events.length === 0 && <div className="empty">予定はありません</div>}
           <div className="evlist">
             {events.map((e) => (
-              <div key={e.id} className="evitem" onClick={() => onEdit(e)}>
-                <span className="evcolor" style={{ background: e.color }} />
+              <div key={e.id} className={"evitem" + (e.done ? " ev-done" : "")} onClick={() => onEdit(e)}>
+                <button
+                  className={"evcheck" + (e.done ? " checked" : "")}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    onToggleDone(e.id);
+                  }}
+                  title="完了にする"
+                >
+                  {e.done ? "✓" : ""}
+                </button>
+                <span className="evcolor" style={{ background: e.color, opacity: e.done ? 0.4 : 1 }} />
                 <span className="evtime">{e.time || ""}</span>
                 <span className="evtitle">{e.title}</span>
                 <button
@@ -1522,6 +1545,19 @@ function Style() {
       .evtime { color: #888; font-size: 12px; min-width: 38px; }
       .evtitle { flex: 1; }
       .statstype { color: #999; font-size: 11px; margin-left: 4px; }
+      .evcheck {
+        width: 22px; height: 22px; border-radius: 50%;
+        border: 2px solid #ccc; background: #fff;
+        font-size: 12px; color: #4caf50; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0; cursor: pointer;
+      }
+      .evcheck.checked { background: #e8f5e9; border-color: #4caf50; }
+      .evcheck.light { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.6); color: #fff; }
+      .evcheck.light.checked { background: rgba(255,255,255,0.5); }
+      .ev-done .evtitle { text-decoration: line-through; opacity: 0.5; }
+      .ev-done .evtime { opacity: 0.4; }
+      .ev-done-chip .houreventtitle { opacity: 0.6; }
       .evdel {
         border: none; background: transparent; color: #ccc; font-size: 13px; padding: 2px 6px;
       }
