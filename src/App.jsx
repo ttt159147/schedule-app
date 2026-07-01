@@ -13,7 +13,7 @@ const CLOTHING_COLORS = [
   "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
   "#8c9eff", "#82b1ff", "#80d8ff", "#84ffff",
   "#a7ffeb", "#b9f6ca", "#ccff90", "#ffe57f",
-  "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161",
+  "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161", "#bdbdbd",
 ];
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
@@ -34,9 +34,11 @@ const DEFAULT_EVENT_PRESETS = [
 
 const DEFAULT_CLOTHING_PRESETS = [
   { id: "ctop1", name: "白シャツ", type: "top", color: CLOTHING_COLORS[6] },
-  { id: "ctop2", name: "黒ニット", type: "top", color: CLOTHING_COLORS[13] },
+  { id: "ctop2", name: "黒ニット", type: "top", color: CLOTHING_COLORS[14] },
   { id: "cbtm1", name: "デニム", type: "bottom", color: CLOTHING_COLORS[7] },
-  { id: "cbtm2", name: "黒パンツ", type: "bottom", color: CLOTHING_COLORS[13] },
+  { id: "cbtm2", name: "黒パンツ", type: "bottom", color: CLOTHING_COLORS[14] },
+  { id: "chat1", name: "キャップ", type: "hat", color: CLOTHING_COLORS[14] },
+  { id: "cshoe1", name: "スニーカー", type: "shoes", color: CLOTHING_COLORS[16] },
 ];
 
 /* ===================== ユーティリティ ===================== */
@@ -833,15 +835,17 @@ function EventEditModal({ initial, isEdit, onCancel, onSave, onDelete }) {
 function ClothingTab({ logs, setLogs, presets, setPresets }) {
   const [date, setDate] = useState(fmtDate(new Date()));
   const [showPresetManager, setShowPresetManager] = useState(false);
-  const [showAdd, setShowAdd] = useState(null); // "top" | "bottom" | null
+  const [showAdd, setShowAdd] = useState(null);
   const [showStats, setShowStats] = useState(false);
 
-  const dayLogs = useMemo(() => logs.filter((l) => l.date === date), [logs, date]);
-  const tops = dayLogs.filter((l) => l.type === "top");
-  const bottoms = dayLogs.filter((l) => l.type === "bottom");
+  const CLOTHING_TYPES = [
+    { type: "top",    label: "👕 上",  emoji: "👕" },
+    { type: "bottom", label: "👖 下",  emoji: "👖" },
+    { type: "hat",    label: "🧢 帽子", emoji: "🧢" },
+    { type: "shoes",  label: "👟 靴",  emoji: "👟" },
+  ];
 
-  const topPresets = presets.filter((p) => p.type === "top");
-  const bottomPresets = presets.filter((p) => p.type === "bottom");
+  const dayLogs = useMemo(() => logs.filter((l) => l.date === date), [logs, date]);
 
   function addLog(type, name, color) {
     setLogs((prev) => [...prev, { id: uid(), date, type, name, color }]);
@@ -873,22 +877,17 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
         </button>
       </div>
 
-      <ClothingSection
-        label="👕 上"
-        items={tops}
-        presets={topPresets}
-        onQuickAdd={(p) => addLog("top", p.name, p.color)}
-        onAddCustom={() => setShowAdd("top")}
-        onDelete={deleteLog}
-      />
-      <ClothingSection
-        label="👖 下"
-        items={bottoms}
-        presets={bottomPresets}
-        onQuickAdd={(p) => addLog("bottom", p.name, p.color)}
-        onAddCustom={() => setShowAdd("bottom")}
-        onDelete={deleteLog}
-      />
+      {CLOTHING_TYPES.map(({ type, label }) => (
+        <ClothingSection
+          key={type}
+          label={label}
+          items={dayLogs.filter((l) => l.type === type)}
+          presets={presets.filter((p) => p.type === type)}
+          onQuickAdd={(p) => addLog(type, p.name, p.color)}
+          onAddCustom={() => setShowAdd(type)}
+          onDelete={deleteLog}
+        />
+      ))}
 
       {showAdd && (
         <ClothingAddModal
@@ -954,7 +953,7 @@ function ClothingAddModal({ type, onCancel, onSave }) {
   const [color, setColor] = useState(CLOTHING_COLORS[0]);
   return (
     <Modal onClose={onCancel}>
-      <h3>{type === "top" ? "上を追加" : "下を追加"}</h3>
+      <h3>{type === "top" ? "上を追加" : type === "bottom" ? "下を追加" : type === "hat" ? "帽子を追加" : "靴を追加"}</h3>
       <label className="flabel">名前</label>
       <input
         type="text"
@@ -1047,6 +1046,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               >
                 <option value="top">上</option>
                 <option value="bottom">下</option>
+                <option value="hat">帽子</option>
+                <option value="shoes">靴</option>
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
@@ -1082,6 +1083,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
         >
           <option value="top">上</option>
           <option value="bottom">下</option>
+          <option value="hat">帽子</option>
+          <option value="shoes">靴</option>
         </select>
       </div>
       <div className="colorgrid">
@@ -1157,6 +1160,8 @@ function ClothingStatsModal({ logs, onClose }) {
             ["all", "全部"],
             ["top", "上"],
             ["bottom", "下"],
+            ["hat", "帽子"],
+            ["shoes", "靴"],
           ].map(([v, label]) => (
             <button
               key={v}
@@ -1176,7 +1181,7 @@ function ClothingStatsModal({ logs, onClose }) {
             <span className="evcolor" style={{ background: s.color }} />
             <span className="evtitle">
               {s.name}
-              <span className="statstype">{s.type === "top" ? "（上）" : "（下）"}</span>
+              <span className="statstype">{s.type === "top" ? "（上）" : s.type === "bottom" ? "（下）" : s.type === "hat" ? "（帽子）" : "（靴）"}</span>
             </span>
             <span className="statscount">{s.count}回</span>
             <span className="statslast">最終: {fmtJpDate(parseDate(s.last), true)}</span>
