@@ -832,18 +832,22 @@ function EventEditModal({ initial, isEdit, onCancel, onSave, onDelete }) {
 
 /* ===================== 服装タブ ===================== */
 
+const CLOTHING_TYPES = [
+  { type: "hat",    label: "🧢 帽子" },
+  { type: "top",    label: "👕 上"   },
+  { type: "bottom", label: "👖 下"   },
+  { type: "shoes",  label: "👟 靴"   },
+];
+
 function ClothingTab({ logs, setLogs, presets, setPresets }) {
   const [date, setDate] = useState(fmtDate(new Date()));
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showAdd, setShowAdd] = useState(null);
   const [showStats, setShowStats] = useState(false);
 
-  const CLOTHING_TYPES = [
-    { type: "top",    label: "👕 上",  emoji: "👕" },
-    { type: "bottom", label: "👖 下",  emoji: "👖" },
-    { type: "hat",    label: "🧢 帽子", emoji: "🧢" },
-    { type: "shoes",  label: "👟 靴",  emoji: "👟" },
-  ];
+  // ドラッグ状態（セクション間移動用）
+  const [dragging, setDragging] = useState(null); // { id, name, color, fromType }
+  const [overType, setOverType] = useState(null);  // ドロップ先のtype
 
   const dayLogs = useMemo(() => logs.filter((l) => l.date === date), [logs, date]);
 
@@ -853,39 +857,65 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
   function deleteLog(id) {
     setLogs((prev) => prev.filter((l) => l.id !== id));
   }
+  function moveLog(id, toType) {
+    setLogs((prev) => prev.map((l) => l.id === id ? { ...l, type: toType } : l));
+  }
+
+  function startItemDrag(e, log) {
+    e.preventDefault();
+    setDragging({ id: log.id, name: log.name, color: log.color, fromType: log.type });
+  }
+
+  useEffect(() => {
+    if (!dragging) return;
+    function onUp() {
+      if (overType && overType !== dragging.fromType) {
+        moveLog(dragging.id, overType);
+      }
+      setDragging(null);
+      setOverType(null);
+    }
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [dragging, overType]);
 
   return (
     <div className="tabcontent">
       <div className="navrow">
-        <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), -1)))}>
-          ‹
-        </button>
+        <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), -1)))}>‹</button>
         <div className="navlabel" onClick={() => setDate(fmtDate(new Date()))}>
           {fmtJpDate(parseDate(date))}
         </div>
-        <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), 1)))}>
-          ›
-        </button>
+        <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), 1)))}>›</button>
       </div>
 
       <div className="toprow-actions">
-        <button className="btn ghost small" onClick={() => setShowPresetManager(true)}>
-          ⚙️ 項目管理
-        </button>
-        <button className="btn ghost small" onClick={() => setShowStats(true)}>
-          📊 集計を見る
-        </button>
+        <button className="btn ghost small" onClick={() => setShowPresetManager(true)}>⚙️ 項目管理</button>
+        <button className="btn ghost small" onClick={() => setShowStats(true)}>📊 集計を見る</button>
       </div>
+
+      {dragging && (
+        <div className="drag-hint">「{dragging.name}」を移動中… 移動先のセクションの上でドロップ</div>
+      )}
 
       {CLOTHING_TYPES.map(({ type, label }) => (
         <ClothingSection
           key={type}
           label={label}
+          type={type}
           items={dayLogs.filter((l) => l.type === type)}
           presets={presets.filter((p) => p.type === type)}
           onQuickAdd={(p) => addLog(type, p.name, p.color)}
           onAddCustom={() => setShowAdd(type)}
           onDelete={deleteLog}
+          dragging={dragging}
+          isOver={overType === type}
+          onDragEnter={() => dragging && setOverType(type)}
+          onItemDragStart={startItemDrag}
         />
       ))}
 
@@ -915,19 +945,44 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
   );
 }
 
-function ClothingSection({ label, items, presets, onQuickAdd, onAddCustom, onDelete }) {
+function ClothingSection({ label, type, items, presets, onQuickAdd, onAddCustom, onDelete, dragging, isOver, onDragEnter, onItemDragStart }) {
   return (
-    <div className="daypanel">
+    <div
+      className={"daypanel" + (isOver && dragging && dragging.fromType !== type ? " drop-target" : "")}
+      onPointerEnter={onDragEnter}
+      onTouchMove={(e) => {
+        // タッチ中は座標からこのセクションに入ったか判定
+        const pt = e.touches[0];
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (pt.clientY >= rect.top && pt.clientY <= rect.bottom) {
+          onDragEnter();
+        }
+      }}
+    >
       <div className="daypanel-title">{label}</div>
-      {items.length === 0 && <div className="empty">記録がありません</div>}
+      {items.length === 0 && (
+        <div className={"empty" + (isOver && dragging && dragging.fromType !== type ? " drop-hint" : "")}>
+          {isOver && dragging && dragging.fromType !== type ? "ここにドロップ" : "記録がありません"}
+        </div>
+      )}
       <div className="evlist">
         {items.map((l) => (
-          <div key={l.id} className="evitem">
+          <div
+            key={l.id}
+            className={"evitem" + (dragging && dragging.id === l.id ? " dragging" : "")}
+            style={{ touchAction: "none" }}
+            onPointerDown={(e) => onItemDragStart(e, l)}
+            onTouchStart={(e) => onItemDragStart(e, l)}
+          >
+            <span className="draghandle" style={{ fontSize: 14, color: "#ccc" }}>⋮⋮</span>
             <span className="evcolor" style={{ background: l.color }} />
             <span className="evtitle">{l.name}</span>
-            <button className="evdel" onClick={() => onDelete(l.id)}>✕</button>
+            <button className="evdel" onPointerDown={(e) => e.stopPropagation()} onClick={() => onDelete(l.id)}>✕</button>
           </div>
         ))}
+        {isOver && dragging && dragging.fromType !== type && items.length > 0 && (
+          <div className="drop-indicator">↓ ここにドロップ</div>
+        )}
       </div>
       <div className="presetrow">
         {presets.map((p) => (
@@ -940,9 +995,7 @@ function ClothingSection({ label, items, presets, onQuickAdd, onAddCustom, onDel
             {p.name}
           </button>
         ))}
-        <button className="presetchip addchip" onClick={onAddCustom}>
-          ＋ 追加
-        </button>
+        <button className="presetchip addchip" onClick={onAddCustom}>＋ 追加</button>
       </div>
     </div>
   );
@@ -1644,6 +1697,19 @@ function Style() {
       .dragging { opacity: 0.5; background: #f0f8ff; border-radius: 8px; }
       .addpresetrow { display: flex; gap: 6px; margin-top: 12px; }
 
+      .drop-target {
+        outline: 2px dashed #4fc3f7;
+        background: #e3f6fd;
+      }
+      .drop-indicator {
+        color: #4fc3f7; font-size: 12px; text-align: center;
+        padding: 6px; border: 1px dashed #4fc3f7; border-radius: 8px; margin-top: 4px;
+      }
+      .drop-hint { color: #4fc3f7 !important; }
+      .drag-hint {
+        background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+        padding: 8px 12px; font-size: 12px; margin-bottom: 8px; text-align: center;
+      }
       .statsfilters { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
       .statslist { display: flex; flex-direction: column; gap: 6px; }
       .statsitem {
