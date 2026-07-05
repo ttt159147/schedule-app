@@ -95,6 +95,32 @@ function saveLS(key, value) {
   }
 }
 
+/* スワイプ検出フック */
+function useSwipe(onSwipeLeft, onSwipeRight, threshold = 50) {
+  const startX = React.useRef(null);
+  const startY = React.useRef(null);
+
+  function onTouchStart(e) {
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+  }
+
+  function onTouchEnd(e) {
+    if (startX.current === null) return;
+    const dx = e.changedTouches[0].clientX - startX.current;
+    const dy = Math.abs(e.changedTouches[0].clientY - startY.current);
+    // 縦スクロールとの誤検出を防ぐ：横移動が縦より大きい場合のみ
+    if (Math.abs(dx) > threshold && Math.abs(dx) > dy * 1.5) {
+      if (dx < 0) onSwipeLeft();
+      else onSwipeRight();
+    }
+    startX.current = null;
+    startY.current = null;
+  }
+
+  return { onTouchStart, onTouchEnd };
+}
+
 function reorderArray(arr, from, to) {
   const next = [...arr];
   const [item] = next.splice(from, 1);
@@ -292,6 +318,11 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
     return `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`;
   }, [view, cursor]);
 
+  const swipe = useSwipe(
+    () => shift(1),   // 左スワイプ → 次へ
+    () => shift(-1),  // 右スワイプ → 前へ
+  );
+
   return (
     <div className="tabcontent">
       <div className="viewswitch">
@@ -326,34 +357,40 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
         <button className="navbtn" onClick={() => shift(1)}>›</button>
       </div>
 
-      {view === "month" && (
-        <MonthGrid
-          cursor={cursor}
-          eventsByDate={eventsByDate}
-          selectedDate={selectedDate}
-          onSelect={(d) => setSelectedDate(d)}
-        />
-      )}
-      {view === "week" && (
-        <WeekGrid
-          cursor={cursor}
-          eventsByDate={eventsByDate}
-          selectedDate={selectedDate}
-          onSelect={(d) => setSelectedDate(d)}
-        />
-      )}
-      {view === "day" && (
-        <HourGrid
-          date={fmtDate(cursor)}
-          events={eventsByDate[fmtDate(cursor)] || []}
-          onEdit={(ev) => setEditingEvent(ev)}
-          onMoveEvent={(id, time) => updateEvent(id, { time })}
-          onToggleDone={(id) => updateEvent(id, { done: !((eventsByDate[fmtDate(cursor)] || []).find(e => e.id === id) || {}).done })}
-          onAddAtHour={(hour, minute) => {
-            setTimeSlotPicker(`${pad(hour)}:${pad(minute)}`);
-          }}
-        />
-      )}
+      <div
+        className="swipeable"
+        onTouchStart={swipe.onTouchStart}
+        onTouchEnd={swipe.onTouchEnd}
+      >
+        {view === "month" && (
+          <MonthGrid
+            cursor={cursor}
+            eventsByDate={eventsByDate}
+            selectedDate={selectedDate}
+            onSelect={(d) => setSelectedDate(d)}
+          />
+        )}
+        {view === "week" && (
+          <WeekGrid
+            cursor={cursor}
+            eventsByDate={eventsByDate}
+            selectedDate={selectedDate}
+            onSelect={(d) => setSelectedDate(d)}
+          />
+        )}
+        {view === "day" && (
+          <HourGrid
+            date={fmtDate(cursor)}
+            events={eventsByDate[fmtDate(cursor)] || []}
+            onEdit={(ev) => setEditingEvent(ev)}
+            onMoveEvent={(id, time) => updateEvent(id, { time })}
+            onToggleDone={(id) => updateEvent(id, { done: !((eventsByDate[fmtDate(cursor)] || []).find(e => e.id === id) || {}).done })}
+            onAddAtHour={(hour, minute) => {
+              setTimeSlotPicker(`${pad(hour)}:${pad(minute)}`);
+            }}
+          />
+        )}
+      </div>
 
       {view !== "day" && (
         <DayPanel
@@ -883,8 +920,13 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
     };
   }, [dragging, overType]);
 
+  const clothingSwipe = useSwipe(
+    () => setDate(fmtDate(addDays(parseDate(date), 1))),
+    () => setDate(fmtDate(addDays(parseDate(date), -1))),
+  );
+
   return (
-    <div className="tabcontent">
+    <div className="tabcontent" onTouchStart={clothingSwipe.onTouchStart} onTouchEnd={clothingSwipe.onTouchEnd}>
       <div className="navrow">
         <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), -1)))}>‹</button>
         <div className="navlabel" onClick={() => setDate(fmtDate(new Date()))}>
@@ -1450,6 +1492,7 @@ function Style() {
       .tab.active { color: #333; border-bottom-color: #4fc3f7; font-weight: bold; }
 
       .tabcontent { padding: 12px; }
+      .swipeable { touch-action: pan-y; user-select: none; }
 
       .viewswitch {
         display: flex;
