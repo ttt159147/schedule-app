@@ -3,14 +3,14 @@ import React, { useState, useEffect, useMemo } from "react";
 /* ===================== 定数 ===================== */
 
 const EVENT_COLORS = [
-  "#e57373", "#f06292", "#ba68c8", "#9575cd",
+  "#f44336", "#e57373", "#f06292", "#ba68c8", "#9575cd",
   "#7986cb", "#64b5f6", "#4fc3f7", "#4dd0e1",
   "#4db6ac", "#81c784", "#aed581", "#ffd54f",
   "#ffb74d", "#a1887f", "#212121", "#1a237e", "#616161",
 ];
 
 const CLOTHING_COLORS = [
-  "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
+  "#f44336", "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
   "#8c9eff", "#82b1ff", "#80d8ff", "#84ffff",
   "#a7ffeb", "#b9f6ca", "#ccff90", "#ffe57f",
   "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161", "#bdbdbd",
