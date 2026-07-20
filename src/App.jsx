@@ -1203,7 +1203,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
 }
 
 function ClothingStatsModal({ logs, onClose }) {
-  const [period, setPeriod] = useState("month"); // week | month | all
+  const [period, setPeriod] = useState("all"); // week | month | all
   const [type, setType] = useState("all"); // all | top | bottom
 
   const stats = useMemo(() => {
@@ -1213,8 +1213,11 @@ function ClothingStatsModal({ logs, onClose }) {
     if (period === "month") from = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const filtered = logs.filter((l) => {
+      if (!l.date || !l.name || !l.type) return false;
       if (type !== "all" && l.type !== type) return false;
-      if (from && parseDate(l.date) < from) return false;
+      if (from) {
+        try { if (parseDate(l.date) < from) return false; } catch { return false; }
+      }
       return true;
     });
 
