@@ -1223,7 +1223,7 @@ function ClothingStatsModal({ logs, onClose }) {
 
     const map = {};
     filtered.forEach((l) => {
-      const key = l.type + "|" + l.name;
+      const key = l.type + "|" + l.name + "|" + (l.color || "");
       if (!map[key]) {
         map[key] = { name: l.name, type: l.type, color: l.color, count: 0, last: l.date };
       }
@@ -1275,7 +1275,7 @@ function ClothingStatsModal({ logs, onClose }) {
       {stats.length === 0 && <div className="empty">記録がありません</div>}
       <div className="statslist">
         {stats.map((s) => (
-          <div key={s.type + s.name} className="statsitem">
+          <div key={s.type + s.name + s.color} className="statsitem">
             <span className="evcolor" style={{ background: s.color }} />
             <span className="evtitle">
               {s.name}
