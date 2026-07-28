@@ -26,10 +26,16 @@ const LS_KEYS = {
   carFuel: "schedule_car_fuel_v1",
   carTrip: "schedule_car_trip_v1",
   carMaintenance: "schedule_car_maintenance_v1",
+  carPresets: "schedule_car_presets_v1",
+};
+
+const DEFAULT_CAR_PRESETS = {
+  fuel:        [{ id: "cf1", name: "コスモ石油" }, { id: "cf2", name: "エネオス" }, { id: "cf3", name: "出光" }],
+  trip:        [{ id: "ct1", name: "通勤" }, { id: "ct2", name: "買い物" }, { id: "ct3", name: "ドライブ" }],
+  maintenance: [{ id: "cm1", name: "オイル交換" }, { id: "cm2", name: "タイヤ交換" }, { id: "cm3", name: "車検" }],
 };
 
 const DEFAULT_EVENT_PRESETS = [
-  { id: "ep1", name: "仕事", color: EVENT_COLORS[5] },
   { id: "ep2", name: "通院", color: EVENT_COLORS[0] },
   { id: "ep3", name: "買い物", color: EVENT_COLORS[9] },
   { id: "ep4", name: "予定なし", color: EVENT_COLORS[13] },
@@ -213,6 +219,7 @@ export default function App() {
   const [carFuel, setCarFuel] = useState(() => loadLS(LS_KEYS.carFuel, []));
   const [carTrip, setCarTrip] = useState(() => loadLS(LS_KEYS.carTrip, []));
   const [carMaintenance, setCarMaintenance] = useState(() => loadLS(LS_KEYS.carMaintenance, []));
+  const [carPresets, setCarPresets] = useState(() => loadLS(LS_KEYS.carPresets, DEFAULT_CAR_PRESETS));
 
   useEffect(() => saveLS(LS_KEYS.events, events), [events]);
   useEffect(() => saveLS(LS_KEYS.eventPresets, eventPresets), [eventPresets]);
@@ -221,6 +228,7 @@ export default function App() {
   useEffect(() => saveLS(LS_KEYS.carFuel, carFuel), [carFuel]);
   useEffect(() => saveLS(LS_KEYS.carTrip, carTrip), [carTrip]);
   useEffect(() => saveLS(LS_KEYS.carMaintenance, carMaintenance), [carMaintenance]);
+  useEffect(() => saveLS(LS_KEYS.carPresets, carPresets), [carPresets]);
 
   return (
     <div className="app">
@@ -264,6 +272,8 @@ export default function App() {
           setTrips={setCarTrip}
           maintenance={carMaintenance}
           setMaintenance={setCarMaintenance}
+          carPresets={carPresets}
+          setCarPresets={setCarPresets}
           onAddEvent={(ev) => setEvents((prev) => [...prev, { id: uid(), ...ev }])}
         />
       )}
@@ -1315,8 +1325,9 @@ function ClothingStatsModal({ logs, onClose }) {
 
 const CAR_COLOR = "#ef5350";
 
-function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, onAddEvent }) {
-  const [subTab, setSubTab] = useState("fuel"); // fuel | trip | maintenance
+function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, carPresets, setCarPresets, onAddEvent }) {
+  const [subTab, setSubTab] = useState("fuel");
+  const [showPresets, setShowPresets] = useState(false);
 
   function addFuel(entry) { setFuel((p) => [{ id: uid(), ...entry }, ...p]); }
   function delFuel(id)    { setFuel((p) => p.filter((x) => x.id !== id)); }
@@ -1341,32 +1352,60 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, o
 
   return (
     <div className="tabcontent">
-      <div className="viewswitch" style={{ marginBottom: 12 }}>
+      <div className="viewswitch" style={{ marginBottom: 8 }}>
         {[["fuel","⛽ ガソリン"],["trip","📍 走行"],["maintenance","🔧 メンテ"]].map(([v,l]) => (
           <button key={v} className={subTab === v ? "vbtn active" : "vbtn"} onClick={() => setSubTab(v)}>{l}</button>
         ))}
       </div>
-      {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  onUpd={updFuel}  />}
-      {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  onUpd={updTrip}  />}
-      {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} onUpd={updMaint} />}
+      <div style={{textAlign:"right", marginBottom: 10}}>
+        <button className="btn ghost small" onClick={() => setShowPresets(true)}>⚙️ 定型文管理</button>
+      </div>
+      {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  onUpd={updFuel}  presets={carPresets?.fuel || []}        />}
+      {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  onUpd={updTrip}  presets={carPresets?.trip || []}        />}
+      {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} onUpd={updMaint} presets={carPresets?.maintenance || []} />}
+      {showPresets && (
+        <CarPresetManagerModal
+          presets={carPresets}
+          onClose={() => setShowPresets(false)}
+          onSave={(p) => setCarPresets(p)}
+        />
+      )}
     </div>
   );
 }
 
 /* ---- ⛽ ガソリン ---- */
-function FuelTab({ logs, onAdd, onDel, onUpd }) {
+function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
   const totalLiters = logs.reduce((s, l) => s + Number(l.liters || 0), 0);
   const totalCost   = logs.reduce((s, l) => s + Number(l.totalPrice || 0), 0);
+  // 燃費: ODOが入力されている連続したエントリ間で計算
+  const sortedLogs = [...logs].sort((a,b) => a.date.localeCompare(b.date));
+  const feList = sortedLogs.map((l, i) => {
+    if (!l.odo || i === 0) return null;
+    const prev = sortedLogs.slice(0, i).reverse().find((x) => x.odo);
+    if (!prev) return null;
+    const km = Number(l.odo) - Number(prev.odo);
+    const lt = Number(l.liters);
+    if (km <= 0 || lt <= 0) return null;
+    return { id: l.id, fe: (km / lt).toFixed(1) };
+  }).filter(Boolean);
+  const feMap = Object.fromEntries(feList.map((x) => [x.id, x.fe]));
+  const avgFe = feList.length
+    ? (feList.reduce((s, x) => s + Number(x.fe), 0) / feList.length).toFixed(1)
+    : null;
 
   return (
     <div>
       {logs.length > 0 && (
         <div className="car-summary">
-          <div className="car-stat"><div className="car-stat-val">{totalLiters.toFixed(1)}<span className="car-stat-unit">L</span></div><div className="car-stat-label">累計給油量</div></div>
-          <div className="car-stat"><div className="car-stat-val">¥{totalCost.toLocaleString()}</div><div className="car-stat-label">累計費用</div></div>
+          <div style={{display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap"}}>
+            <div className="car-stat"><div className="car-stat-val">{totalLiters.toFixed(1)}<span className="car-stat-unit">L</span></div><div className="car-stat-label">累計給油量</div></div>
+            <div className="car-stat"><div className="car-stat-val">¥{totalCost.toLocaleString()}</div><div className="car-stat-label">累計費用</div></div>
+            {avgFe && <div className="car-stat"><div className="car-stat-val">{avgFe}<span className="car-stat-unit">km/L</span></div><div className="car-stat-label">平均燃費</div></div>}
+          </div>
         </div>
       )}
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 給油記録を追加</button>
@@ -1378,16 +1417,19 @@ function FuelTab({ logs, onAdd, onDel, onUpd }) {
               <span className="car-chip blue">{Number(l.liters).toFixed(1)}L</span>
               <span className="car-chip green">¥{Number(l.totalPrice).toLocaleString()}</span>
               <span className="car-chip gray">@¥{(Number(l.totalPrice)/Number(l.liters)).toFixed(1)}/L</span>
+              {feMap[l.id] && <span className="car-chip orange">{feMap[l.id]}km/L</span>}
               <button className="evdel" onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
             </div>
+            {l.odo && <div className="car-item-memo">ODO: {Number(l.odo).toLocaleString()} km</div>}
           </div>
         ))}
       </div>
       {showModal && (
-        <FuelModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
+        <FuelModal presets={presets} onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
       )}
       {editItem && (
         <FuelModal
+          presets={presets}
           initial={editItem}
           onCancel={() => setEditItem(null)}
           onSave={(d) => { onUpd(editItem.id, d); setEditItem(null); }}
@@ -1398,14 +1440,14 @@ function FuelTab({ logs, onAdd, onDel, onUpd }) {
   );
 }
 
-function FuelModal({ initial, onCancel, onSave, onDelete }) {
-  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
-  const [store, setStore]     = useState(initial?.store || "");
-  const [liters, setLiters]   = useState(initial?.liters || "");
-  const [total, setTotal]     = useState(initial?.totalPrice || "");
-
-  const perLiter = liters && total ? (Number(total) / Number(liters)).toFixed(1) : null;
+function FuelModal({ initial, presets, onCancel, onSave, onDelete }) {
+  const [date, setDate]     = useState(initial?.date || fmtDate(new Date()));
+  const [store, setStore]   = useState(initial?.store || "");
+  const [liters, setLiters] = useState(initial?.liters || "");
+  const [total, setTotal]   = useState(initial?.totalPrice || "");
+  const [odo, setOdo]       = useState(initial?.odo || "");
   const isEdit = !!initial;
+  const perLiter = liters && total ? (Number(total) / Number(liters)).toFixed(1) : null;
 
   return (
     <Modal onClose={onCancel}>
@@ -1414,7 +1456,16 @@ function FuelModal({ initial, onCancel, onSave, onDelete }) {
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
       <label className="flabel">店舗名（任意）</label>
+      {presets.length > 0 && (
+        <div className="presetrow" style={{margin:"6px 0"}}>
+          {presets.map((p) => (
+            <button key={p.id} className="presetchip addchip" style={{background:"#e3f2fd",color:"#1565c0"}} onClick={() => setStore(p.name)}>{p.name}</button>
+          ))}
+        </div>
+      )}
       <input type="text" className="finput" value={store} onChange={(e) => setStore(e.target.value)} placeholder="例：コスモ石油〇〇店" />
+      <label className="flabel">ODOメーター（km・任意）</label>
+      <input type="number" className="finput" value={odo} onChange={(e) => setOdo(e.target.value)} placeholder="例：12500" min="0" />
       <label className="flabel">給油量（L）</label>
       <input type="number" className="finput" value={liters} onChange={(e) => setLiters(e.target.value)} placeholder="0.0" step="0.1" min="0" />
       <label className="flabel">合計金額（円）</label>
@@ -1423,14 +1474,14 @@ function FuelModal({ initial, onCancel, onSave, onDelete }) {
       <div className="modalbtns">
         {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
-        <button className="btn primary" disabled={!liters || !total} onClick={() => onSave({ date, store, liters, totalPrice: total })}>保存</button>
+        <button className="btn primary" disabled={!liters || !total} onClick={() => onSave({ date, store, liters, totalPrice: total, odo })}>保存</button>
       </div>
     </Modal>
   );
 }
 
 /* ---- 📍 走行 ---- */
-function TripTab({ logs, onAdd, onDel, onUpd }) {
+function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [statPeriod, setStatPeriod] = useState("month");
@@ -1477,10 +1528,11 @@ function TripTab({ logs, onAdd, onDel, onUpd }) {
         })}
       </div>
       {showModal && (
-        <TripModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
+        <TripModal presets={presets} onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
       )}
       {editItem && (
         <TripModal
+          presets={presets}
           initial={editItem}
           onCancel={() => setEditItem(null)}
           onSave={(d) => { onUpd(editItem.id, d); setEditItem(null); }}
@@ -1491,13 +1543,12 @@ function TripTab({ logs, onAdd, onDel, onUpd }) {
   );
 }
 
-function TripModal({ initial, onCancel, onSave, onDelete }) {
-  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
-  const [startOdo, setStart]  = useState(initial?.startOdo || "");
-  const [endOdo, setEnd]      = useState(initial?.endOdo || "");
-  const [memo, setMemo]       = useState(initial?.memo || "");
+function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
+  const [date, setDate]      = useState(initial?.date || fmtDate(new Date()));
+  const [startOdo, setStart] = useState(initial?.startOdo || "");
+  const [endOdo, setEnd]     = useState(initial?.endOdo || "");
+  const [memo, setMemo]      = useState(initial?.memo || "");
   const isEdit = !!initial;
-
   const km = startOdo && endOdo ? Math.max(0, Number(endOdo) - Number(startOdo)) : null;
 
   return (
@@ -1512,6 +1563,13 @@ function TripModal({ initial, onCancel, onSave, onDelete }) {
       <input type="number" className="finput" value={endOdo} onChange={(e) => setEnd(e.target.value)} placeholder="例：12150" min="0" />
       {km !== null && <div className="car-calc-hint">走行距離：{km.toLocaleString()} km</div>}
       <label className="flabel">メモ（目的地・移動場所など）</label>
+      {presets.length > 0 && (
+        <div className="presetrow" style={{margin:"6px 0"}}>
+          {presets.map((p) => (
+            <button key={p.id} className="presetchip addchip" style={{background:"#e8f5e9",color:"#2e7d32"}} onClick={() => setMemo(p.name)}>{p.name}</button>
+          ))}
+        </div>
+      )}
       <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：大阪→東京" />
       <div className="modalbtns">
         {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
@@ -1522,8 +1580,7 @@ function TripModal({ initial, onCancel, onSave, onDelete }) {
   );
 }
 
-/* ---- 🔧 メンテナンス ---- */
-function MaintenanceTab({ logs, onAdd, onDel, onUpd }) {
+function MaintenanceTab({ logs, onAdd, onDel, onUpd, presets }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
@@ -1545,10 +1602,11 @@ function MaintenanceTab({ logs, onAdd, onDel, onUpd }) {
         ))}
       </div>
       {showModal && (
-        <MaintenanceModal onCancel={() => setShowModal(false)} onSave={(d, link) => { onAdd(d, link); setShowModal(false); }} />
+        <MaintenanceModal presets={presets} onCancel={() => setShowModal(false)} onSave={(d, link) => { onAdd(d, link); setShowModal(false); }} />
       )}
       {editItem && (
         <MaintenanceModal
+          presets={presets}
           initial={editItem}
           onCancel={() => setEditItem(null)}
           onSave={(d, link) => { onUpd(editItem.id, d, link); setEditItem(null); }}
@@ -1559,12 +1617,12 @@ function MaintenanceTab({ logs, onAdd, onDel, onUpd }) {
   );
 }
 
-function MaintenanceModal({ initial, onCancel, onSave, onDelete }) {
-  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
-  const [title, setTitle]     = useState(initial?.title || "");
-  const [cost, setCost]       = useState(initial?.cost || "");
-  const [memo, setMemo]       = useState(initial?.memo || "");
-  const [nextDate, setNext]   = useState(initial?.nextDate || "");
+function MaintenanceModal({ initial, presets, onCancel, onSave, onDelete }) {
+  const [date, setDate]     = useState(initial?.date || fmtDate(new Date()));
+  const [title, setTitle]   = useState(initial?.title || "");
+  const [cost, setCost]     = useState(initial?.cost || "");
+  const [memo, setMemo]     = useState(initial?.memo || "");
+  const [nextDate, setNext] = useState(initial?.nextDate || "");
   const [linkCal, setLinkCal] = useState(!initial);
   const isEdit = !!initial;
 
@@ -1575,6 +1633,13 @@ function MaintenanceModal({ initial, onCancel, onSave, onDelete }) {
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
       <label className="flabel">内容</label>
+      {presets.length > 0 && (
+        <div className="presetrow" style={{margin:"6px 0"}}>
+          {presets.map((p) => (
+            <button key={p.id} className="presetchip addchip" style={{background:"#fce4ec",color:"#c62828"}} onClick={() => setTitle(p.name)}>{p.name}</button>
+          ))}
+        </div>
+      )}
       <input type="text" className="finput" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：オイル交換、タイヤ交換" />
       <label className="flabel">費用（円・任意）</label>
       <input type="number" className="finput" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" min="0" />
@@ -1597,6 +1662,7 @@ function MaintenanceModal({ initial, onCancel, onSave, onDelete }) {
     </Modal>
   );
 }
+
 
 function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
   const [list, setList] = useState(presets);
@@ -1744,6 +1810,62 @@ function PresetTimeModal({ preset, onCancel, onSave }) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+function CarPresetManagerModal({ presets, onClose, onSave }) {
+  const [local, setLocal] = useState({ ...presets });
+  const CATS = [
+    { key: "fuel",        label: "⛽ 給油店舗" },
+    { key: "trip",        label: "📍 目的地・用途" },
+    { key: "maintenance", label: "🔧 メンテ内容" },
+  ];
+
+  function addItem(key, name) {
+    if (!name.trim()) return;
+    const next = { ...local, [key]: [...(local[key] || []), { id: uid(), name: name.trim() }] };
+    setLocal(next);
+    onSave(next);
+  }
+  function removeItem(key, id) {
+    const next = { ...local, [key]: (local[key] || []).filter((x) => x.id !== id) };
+    setLocal(next);
+    onSave(next);
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <h3>🚗 定型文の管理</h3>
+      {CATS.map(({ key, label }) => (
+        <div key={key} style={{ marginBottom: 16 }}>
+          <div className="daypanel-title">{label}</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+            {(local[key] || []).map((p) => (
+              <div key={p.id} className="presetchip addchip" style={{ display:"flex", alignItems:"center", gap:4 }}>
+                {p.name}
+                <button style={{ border:"none", background:"transparent", color:"#999", cursor:"pointer", padding:0 }}
+                  onClick={() => removeItem(key, p.id)}>✕</button>
+              </div>
+            ))}
+          </div>
+          <CarPresetAddRow onAdd={(name) => addItem(key, name)} />
+        </div>
+      ))}
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onClose}>閉じる</button>
+      </div>
+    </Modal>
+  );
+}
+
+function CarPresetAddRow({ onAdd }) {
+  const [name, setName] = useState("");
+  return (
+    <div style={{ display:"flex", gap:6 }}>
+      <input className="finput inline" value={name} onChange={(e) => setName(e.target.value)} placeholder="新しい項目名" />
+      <button className="btn primary" style={{ flex:"0 0 auto", padding:"8px 12px", fontSize:13 }}
+        disabled={!name.trim()} onClick={() => { onAdd(name); setName(""); }}>追加</button>
+    </div>
   );
 }
 
@@ -2089,7 +2211,7 @@ function Style() {
       }
       .car-chip.blue  { background: #e3f2fd; color: #1565c0; }
       .car-chip.green { background: #e8f5e9; color: #2e7d32; }
-      .car-chip.gray  { background: #f5f5f5; color: #555; }
+      .car-chip.orange { background: #fff3e0; color: #e65100; }
       .car-calc-hint {
         font-size: 13px; color: #4fc3f7; font-weight: bold;
         margin-top: 6px; padding: 8px; background: #e3f6fd; border-radius: 8px; text-align: center;
