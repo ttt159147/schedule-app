@@ -254,6 +254,8 @@ export default function App() {
           setEvents={setEvents}
           presets={eventPresets}
           setPresets={setEventPresets}
+          carMaintenance={carMaintenance}
+          setCarMaintenance={setCarMaintenance}
         />
       )}
       {tab === "clothing" && (
@@ -274,7 +276,11 @@ export default function App() {
           setMaintenance={setCarMaintenance}
           carPresets={carPresets}
           setCarPresets={setCarPresets}
-          onAddEvent={(ev) => setEvents((prev) => [...prev, { id: uid(), ...ev }])}
+          onAddEvent={(ev) => {
+            const newId = uid();
+            setEvents((prev) => [...prev, { id: newId, ...ev }]);
+            return newId;
+          }}
         />
       )}
     </div>
@@ -283,7 +289,7 @@ export default function App() {
 
 /* ===================== 予定タブ ===================== */
 
-function CalendarTab({ events, setEvents, presets, setPresets }) {
+function CalendarTab({ events, setEvents, presets, setPresets, carMaintenance, setCarMaintenance }) {
   const [view, setView] = useState("month"); // day | week | month
   const [cursor, setCursor] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(fmtDate(new Date()));
@@ -332,6 +338,12 @@ function CalendarTab({ events, setEvents, presets, setPresets }) {
   }
   function deleteEvent(id) {
     setEvents((prev) => prev.filter((e) => e.id !== id));
+    // メンテナンス記録と連動：calEventIdが一致するレコードのnextDate・nextTimeをクリア
+    if (setCarMaintenance) {
+      setCarMaintenance((prev) => prev.map((m) =>
+        m.calEventId === id ? { ...m, nextDate: "", nextTime: "", calEventId: null } : m
+      ));
+    }
   }
 
   const headerLabel = useMemo(() => {
@@ -1336,18 +1348,20 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
   function delTrip(id)    { setTrips((p) => p.filter((x) => x.id !== id)); }
   function updTrip(id, entry) { setTrips((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x)); }
   function addMaint(entry, linkCal) {
-    const m = { id: uid(), ...entry };
-    setMaintenance((p) => [m, ...p]);
+    const newId = uid();
+    let calEventId = null;
     if (linkCal && entry.nextDate) {
-      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
+      calEventId = onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
     }
+    setMaintenance((p) => [{ id: newId, ...entry, calEventId }, ...p]);
   }
   function delMaint(id)   { setMaintenance((p) => p.filter((x) => x.id !== id)); }
   function updMaint(id, entry, linkCal) {
-    setMaintenance((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x));
+    let calEventId = null;
     if (linkCal && entry.nextDate) {
-      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
+      calEventId = onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
     }
+    setMaintenance((p) => p.map((x) => x.id === id ? { ...x, ...entry, calEventId: calEventId ?? x.calEventId } : x));
   }
 
   return (
@@ -1594,7 +1608,7 @@ function MaintenanceTab({ logs, onAdd, onDel, onUpd, presets }) {
               {fmtJpDate(parseDate(l.date), true)}
               {l.cost && <span className="car-chip green" style={{marginLeft:8}}>¥{Number(l.cost).toLocaleString()}</span>}
             </div>
-            <div className="car-item-title">🔧 {l.title}</div>
+            <div className="car-item-title">🔧 {l.title} {l.calEventId && <span style={{fontSize:11,color:"#4fc3f7"}}>📅連携中</span>}</div>
             {l.memo && <div className="car-item-memo">{l.memo}</div>}
             {l.nextDate && <div className="car-item-next">次回: {fmtJpDate(parseDate(l.nextDate), true)}</div>}
             <button className="evdel" style={{marginTop:4}} onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
