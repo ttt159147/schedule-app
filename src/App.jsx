@@ -1320,19 +1320,24 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, o
 
   function addFuel(entry) { setFuel((p) => [{ id: uid(), ...entry }, ...p]); }
   function delFuel(id)    { setFuel((p) => p.filter((x) => x.id !== id)); }
+  function updFuel(id, entry) { setFuel((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x)); }
   function addTrip(entry) { setTrips((p) => [{ id: uid(), ...entry }, ...p]); }
   function delTrip(id)    { setTrips((p) => p.filter((x) => x.id !== id)); }
+  function updTrip(id, entry) { setTrips((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x)); }
   function addMaint(entry, linkCal) {
     const m = { id: uid(), ...entry };
     setMaintenance((p) => [m, ...p]);
-    if (linkCal) {
-      onAddEvent({ date: entry.date, title: "🔧 " + entry.title, color: CAR_COLOR, time: "" });
-      if (entry.nextDate) {
-        onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
-      }
+    if (linkCal && entry.nextDate) {
+      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
     }
   }
   function delMaint(id)   { setMaintenance((p) => p.filter((x) => x.id !== id)); }
+  function updMaint(id, entry, linkCal) {
+    setMaintenance((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x));
+    if (linkCal && entry.nextDate) {
+      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
+    }
+  }
 
   return (
     <div className="tabcontent">
@@ -1341,16 +1346,17 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, o
           <button key={v} className={subTab === v ? "vbtn active" : "vbtn"} onClick={() => setSubTab(v)}>{l}</button>
         ))}
       </div>
-      {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  />}
-      {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  />}
-      {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} />}
+      {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  onUpd={updFuel}  />}
+      {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  onUpd={updTrip}  />}
+      {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} onUpd={updMaint} />}
     </div>
   );
 }
 
 /* ---- ⛽ ガソリン ---- */
-function FuelTab({ logs, onAdd, onDel }) {
+function FuelTab({ logs, onAdd, onDel, onUpd }) {
   const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
 
   const totalLiters = logs.reduce((s, l) => s + Number(l.liters || 0), 0);
   const totalCost   = logs.reduce((s, l) => s + Number(l.totalPrice || 0), 0);
@@ -1366,13 +1372,13 @@ function FuelTab({ logs, onAdd, onDel }) {
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 給油記録を追加</button>
       <div className="car-list">
         {logs.map((l) => (
-          <div key={l.id} className="car-item">
+          <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
             <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.store && <span className="car-item-sub">{l.store}</span>}</div>
             <div className="car-item-row">
               <span className="car-chip blue">{Number(l.liters).toFixed(1)}L</span>
               <span className="car-chip green">¥{Number(l.totalPrice).toLocaleString()}</span>
               <span className="car-chip gray">@¥{(Number(l.totalPrice)/Number(l.liters)).toFixed(1)}/L</span>
-              <button className="evdel" onClick={() => onDel(l.id)}>✕</button>
+              <button className="evdel" onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
             </div>
           </div>
         ))}
@@ -1380,21 +1386,30 @@ function FuelTab({ logs, onAdd, onDel }) {
       {showModal && (
         <FuelModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
       )}
+      {editItem && (
+        <FuelModal
+          initial={editItem}
+          onCancel={() => setEditItem(null)}
+          onSave={(d) => { onUpd(editItem.id, d); setEditItem(null); }}
+          onDelete={() => { onDel(editItem.id); setEditItem(null); }}
+        />
+      )}
     </div>
   );
 }
 
-function FuelModal({ onCancel, onSave }) {
-  const [date, setDate]       = useState(fmtDate(new Date()));
-  const [store, setStore]     = useState("");
-  const [liters, setLiters]   = useState("");
-  const [total, setTotal]     = useState("");
+function FuelModal({ initial, onCancel, onSave, onDelete }) {
+  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
+  const [store, setStore]     = useState(initial?.store || "");
+  const [liters, setLiters]   = useState(initial?.liters || "");
+  const [total, setTotal]     = useState(initial?.totalPrice || "");
 
   const perLiter = liters && total ? (Number(total) / Number(liters)).toFixed(1) : null;
+  const isEdit = !!initial;
 
   return (
     <Modal onClose={onCancel}>
-      <h3>⛽ 給油記録</h3>
+      <h3>⛽ 給油記録{isEdit ? "を編集" : ""}</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
@@ -1406,6 +1421,7 @@ function FuelModal({ onCancel, onSave }) {
       <input type="number" className="finput" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" min="0" />
       {perLiter && <div className="car-calc-hint">1リッター ≈ ¥{perLiter}</div>}
       <div className="modalbtns">
+        {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
         <button className="btn primary" disabled={!liters || !total} onClick={() => onSave({ date, store, liters, totalPrice: total })}>保存</button>
       </div>
@@ -1414,8 +1430,9 @@ function FuelModal({ onCancel, onSave }) {
 }
 
 /* ---- 📍 走行 ---- */
-function TripTab({ logs, onAdd, onDel }) {
+function TripTab({ logs, onAdd, onDel, onUpd }) {
   const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
   const [statPeriod, setStatPeriod] = useState("month");
 
   const now = new Date();
@@ -1447,13 +1464,13 @@ function TripTab({ logs, onAdd, onDel }) {
         {logs.map((l) => {
           const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
           return (
-            <div key={l.id} className="car-item">
+            <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
               <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.memo && <span className="car-item-sub">{l.memo}</span>}</div>
               <div className="car-item-row">
                 <span className="car-chip gray">{Number(l.startOdo).toLocaleString()}km →</span>
                 <span className="car-chip gray">{Number(l.endOdo).toLocaleString()}km</span>
                 <span className="car-chip blue">+{km.toLocaleString()}km</span>
-                <button className="evdel" onClick={() => onDel(l.id)}>✕</button>
+                <button className="evdel" onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
               </div>
             </div>
           );
@@ -1462,21 +1479,30 @@ function TripTab({ logs, onAdd, onDel }) {
       {showModal && (
         <TripModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
       )}
+      {editItem && (
+        <TripModal
+          initial={editItem}
+          onCancel={() => setEditItem(null)}
+          onSave={(d) => { onUpd(editItem.id, d); setEditItem(null); }}
+          onDelete={() => { onDel(editItem.id); setEditItem(null); }}
+        />
+      )}
     </div>
   );
 }
 
-function TripModal({ onCancel, onSave }) {
-  const [date, setDate]       = useState(fmtDate(new Date()));
-  const [startOdo, setStart]  = useState("");
-  const [endOdo, setEnd]      = useState("");
-  const [memo, setMemo]       = useState("");
+function TripModal({ initial, onCancel, onSave, onDelete }) {
+  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
+  const [startOdo, setStart]  = useState(initial?.startOdo || "");
+  const [endOdo, setEnd]      = useState(initial?.endOdo || "");
+  const [memo, setMemo]       = useState(initial?.memo || "");
+  const isEdit = !!initial;
 
   const km = startOdo && endOdo ? Math.max(0, Number(endOdo) - Number(startOdo)) : null;
 
   return (
     <Modal onClose={onCancel}>
-      <h3>📍 走行記録</h3>
+      <h3>📍 走行記録{isEdit ? "を編集" : ""}</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
@@ -1488,6 +1514,7 @@ function TripModal({ onCancel, onSave }) {
       <label className="flabel">メモ（目的地・移動場所など）</label>
       <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：大阪→東京" />
       <div className="modalbtns">
+        {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
         <button className="btn primary" disabled={!startOdo || !endOdo} onClick={() => onSave({ date, startOdo, endOdo, memo })}>保存</button>
       </div>
@@ -1496,15 +1523,16 @@ function TripModal({ onCancel, onSave }) {
 }
 
 /* ---- 🔧 メンテナンス ---- */
-function MaintenanceTab({ logs, onAdd, onDel }) {
+function MaintenanceTab({ logs, onAdd, onDel, onUpd }) {
   const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
 
   return (
     <div>
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ メンテナンス記録を追加</button>
       <div className="car-list">
         {logs.map((l) => (
-          <div key={l.id} className="car-item">
+          <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
             <div className="car-item-date">
               {fmtJpDate(parseDate(l.date), true)}
               {l.cost && <span className="car-chip green" style={{marginLeft:8}}>¥{Number(l.cost).toLocaleString()}</span>}
@@ -1512,28 +1540,37 @@ function MaintenanceTab({ logs, onAdd, onDel }) {
             <div className="car-item-title">🔧 {l.title}</div>
             {l.memo && <div className="car-item-memo">{l.memo}</div>}
             {l.nextDate && <div className="car-item-next">次回: {fmtJpDate(parseDate(l.nextDate), true)}</div>}
-            <button className="evdel" style={{marginTop:4}} onClick={() => onDel(l.id)}>✕</button>
+            <button className="evdel" style={{marginTop:4}} onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
           </div>
         ))}
       </div>
       {showModal && (
         <MaintenanceModal onCancel={() => setShowModal(false)} onSave={(d, link) => { onAdd(d, link); setShowModal(false); }} />
       )}
+      {editItem && (
+        <MaintenanceModal
+          initial={editItem}
+          onCancel={() => setEditItem(null)}
+          onSave={(d, link) => { onUpd(editItem.id, d, link); setEditItem(null); }}
+          onDelete={() => { onDel(editItem.id); setEditItem(null); }}
+        />
+      )}
     </div>
   );
 }
 
-function MaintenanceModal({ onCancel, onSave }) {
-  const [date, setDate]       = useState(fmtDate(new Date()));
-  const [title, setTitle]     = useState("");
-  const [cost, setCost]       = useState("");
-  const [memo, setMemo]       = useState("");
-  const [nextDate, setNext]   = useState("");
-  const [linkCal, setLinkCal] = useState(true);
+function MaintenanceModal({ initial, onCancel, onSave, onDelete }) {
+  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
+  const [title, setTitle]     = useState(initial?.title || "");
+  const [cost, setCost]       = useState(initial?.cost || "");
+  const [memo, setMemo]       = useState(initial?.memo || "");
+  const [nextDate, setNext]   = useState(initial?.nextDate || "");
+  const [linkCal, setLinkCal] = useState(!initial);
+  const isEdit = !!initial;
 
   return (
     <Modal onClose={onCancel}>
-      <h3>🔧 メンテナンス記録</h3>
+      <h3>🔧 メンテナンス記録{isEdit ? "を編集" : ""}</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
@@ -1543,6 +1580,7 @@ function MaintenanceModal({ onCancel, onSave }) {
       <input type="number" className="finput" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" min="0" />
       <label className="flabel">次回予定日（任意）</label>
       <input type="date" className="finput" value={nextDate} onChange={(e) => setNext(e.target.value)} />
+      {nextDate && <div className="dateweekdayhint">{fmtJpDate(parseDate(nextDate))}</div>}
       <label className="flabel">メモ（任意）</label>
       <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：交換後の状態など" />
       <div className="cal-link-row">
@@ -1552,6 +1590,7 @@ function MaintenanceModal({ onCancel, onSave }) {
         </label>
       </div>
       <div className="modalbtns">
+        {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
         <button className="btn primary" disabled={!title.trim()} onClick={() => onSave({ date, title: title.trim(), cost, memo, nextDate }, linkCal)}>保存</button>
       </div>
