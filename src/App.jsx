@@ -23,6 +23,9 @@ const LS_KEYS = {
   eventPresets: "schedule_event_presets_v1",
   clothingLogs: "schedule_clothing_logs_v1",
   clothingPresets: "schedule_clothing_presets_v1",
+  carFuel: "schedule_car_fuel_v1",
+  carTrip: "schedule_car_trip_v1",
+  carMaintenance: "schedule_car_maintenance_v1",
 };
 
 const DEFAULT_EVENT_PRESETS = [
@@ -190,7 +193,7 @@ function DragHandle({ onPointerDown, onTouchStart }) {
 
 
 export default function App() {
-  const [tab, setTab] = useState("calendar"); // calendar | clothing
+  const [tab, setTab] = useState("calendar"); // calendar | clothing | car
 
   /* ---- 予定データ ---- */
   const [events, setEvents] = useState(() => loadLS(LS_KEYS.events, []));
@@ -206,13 +209,18 @@ export default function App() {
     loadLS(LS_KEYS.clothingPresets, DEFAULT_CLOTHING_PRESETS)
   );
 
+  /* ---- 車データ ---- */
+  const [carFuel, setCarFuel] = useState(() => loadLS(LS_KEYS.carFuel, []));
+  const [carTrip, setCarTrip] = useState(() => loadLS(LS_KEYS.carTrip, []));
+  const [carMaintenance, setCarMaintenance] = useState(() => loadLS(LS_KEYS.carMaintenance, []));
+
   useEffect(() => saveLS(LS_KEYS.events, events), [events]);
   useEffect(() => saveLS(LS_KEYS.eventPresets, eventPresets), [eventPresets]);
   useEffect(() => saveLS(LS_KEYS.clothingLogs, clothingLogs), [clothingLogs]);
-  useEffect(
-    () => saveLS(LS_KEYS.clothingPresets, clothingPresets),
-    [clothingPresets]
-  );
+  useEffect(() => saveLS(LS_KEYS.clothingPresets, clothingPresets), [clothingPresets]);
+  useEffect(() => saveLS(LS_KEYS.carFuel, carFuel), [carFuel]);
+  useEffect(() => saveLS(LS_KEYS.carTrip, carTrip), [carTrip]);
+  useEffect(() => saveLS(LS_KEYS.carMaintenance, carMaintenance), [carMaintenance]);
 
   return (
     <div className="app">
@@ -220,17 +228,14 @@ export default function App() {
       <header className="header">
         <h1>スケジュール</h1>
         <div className="tabbar">
-          <button
-            className={tab === "calendar" ? "tab active" : "tab"}
-            onClick={() => setTab("calendar")}
-          >
+          <button className={tab === "calendar" ? "tab active" : "tab"} onClick={() => setTab("calendar")}>
             📅 予定
           </button>
-          <button
-            className={tab === "clothing" ? "tab active" : "tab"}
-            onClick={() => setTab("clothing")}
-          >
+          <button className={tab === "clothing" ? "tab active" : "tab"} onClick={() => setTab("clothing")}>
             👕 服装
+          </button>
+          <button className={tab === "car" ? "tab active" : "tab"} onClick={() => setTab("car")}>
+            🚗 車
           </button>
         </div>
       </header>
@@ -249,6 +254,17 @@ export default function App() {
           setLogs={setClothingLogs}
           presets={clothingPresets}
           setPresets={setClothingPresets}
+        />
+      )}
+      {tab === "car" && (
+        <CarTab
+          fuel={carFuel}
+          setFuel={setCarFuel}
+          trips={carTrip}
+          setTrips={setCarTrip}
+          maintenance={carMaintenance}
+          setMaintenance={setCarMaintenance}
+          onAddEvent={(ev) => setEvents((prev) => [...prev, { id: uid(), ...ev }])}
         />
       )}
     </div>
@@ -1295,6 +1311,251 @@ function ClothingStatsModal({ logs, onClose }) {
 
 /* ===================== 予定プリセット管理（共通） ===================== */
 
+/* ===================== 車タブ ===================== */
+
+const CAR_COLOR = "#ef5350";
+
+function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, onAddEvent }) {
+  const [subTab, setSubTab] = useState("fuel"); // fuel | trip | maintenance
+
+  function addFuel(entry) { setFuel((p) => [{ id: uid(), ...entry }, ...p]); }
+  function delFuel(id)    { setFuel((p) => p.filter((x) => x.id !== id)); }
+  function addTrip(entry) { setTrips((p) => [{ id: uid(), ...entry }, ...p]); }
+  function delTrip(id)    { setTrips((p) => p.filter((x) => x.id !== id)); }
+  function addMaint(entry, linkCal) {
+    const m = { id: uid(), ...entry };
+    setMaintenance((p) => [m, ...p]);
+    if (linkCal) {
+      onAddEvent({ date: entry.date, title: "🔧 " + entry.title, color: CAR_COLOR, time: "" });
+      if (entry.nextDate) {
+        onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
+      }
+    }
+  }
+  function delMaint(id)   { setMaintenance((p) => p.filter((x) => x.id !== id)); }
+
+  return (
+    <div className="tabcontent">
+      <div className="viewswitch" style={{ marginBottom: 12 }}>
+        {[["fuel","⛽ ガソリン"],["trip","📍 走行"],["maintenance","🔧 メンテ"]].map(([v,l]) => (
+          <button key={v} className={subTab === v ? "vbtn active" : "vbtn"} onClick={() => setSubTab(v)}>{l}</button>
+        ))}
+      </div>
+      {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  />}
+      {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  />}
+      {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} />}
+    </div>
+  );
+}
+
+/* ---- ⛽ ガソリン ---- */
+function FuelTab({ logs, onAdd, onDel }) {
+  const [showModal, setShowModal] = useState(false);
+
+  const totalLiters = logs.reduce((s, l) => s + Number(l.liters || 0), 0);
+  const totalCost   = logs.reduce((s, l) => s + Number(l.totalPrice || 0), 0);
+
+  return (
+    <div>
+      {logs.length > 0 && (
+        <div className="car-summary">
+          <div className="car-stat"><div className="car-stat-val">{totalLiters.toFixed(1)}<span className="car-stat-unit">L</span></div><div className="car-stat-label">累計給油量</div></div>
+          <div className="car-stat"><div className="car-stat-val">¥{totalCost.toLocaleString()}</div><div className="car-stat-label">累計費用</div></div>
+        </div>
+      )}
+      <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 給油記録を追加</button>
+      <div className="car-list">
+        {logs.map((l) => (
+          <div key={l.id} className="car-item">
+            <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.store && <span className="car-item-sub">{l.store}</span>}</div>
+            <div className="car-item-row">
+              <span className="car-chip blue">{Number(l.liters).toFixed(1)}L</span>
+              <span className="car-chip green">¥{Number(l.totalPrice).toLocaleString()}</span>
+              <span className="car-chip gray">@¥{(Number(l.totalPrice)/Number(l.liters)).toFixed(1)}/L</span>
+              <button className="evdel" onClick={() => onDel(l.id)}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {showModal && (
+        <FuelModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
+      )}
+    </div>
+  );
+}
+
+function FuelModal({ onCancel, onSave }) {
+  const [date, setDate]       = useState(fmtDate(new Date()));
+  const [store, setStore]     = useState("");
+  const [liters, setLiters]   = useState("");
+  const [total, setTotal]     = useState("");
+
+  const perLiter = liters && total ? (Number(total) / Number(liters)).toFixed(1) : null;
+
+  return (
+    <Modal onClose={onCancel}>
+      <h3>⛽ 給油記録</h3>
+      <label className="flabel">日付</label>
+      <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <label className="flabel">店舗名（任意）</label>
+      <input type="text" className="finput" value={store} onChange={(e) => setStore(e.target.value)} placeholder="例：コスモ石油〇〇店" />
+      <label className="flabel">給油量（L）</label>
+      <input type="number" className="finput" value={liters} onChange={(e) => setLiters(e.target.value)} placeholder="0.0" step="0.1" min="0" />
+      <label className="flabel">合計金額（円）</label>
+      <input type="number" className="finput" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" min="0" />
+      {perLiter && <div className="car-calc-hint">1リッター ≈ ¥{perLiter}</div>}
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onCancel}>キャンセル</button>
+        <button className="btn primary" disabled={!liters || !total} onClick={() => onSave({ date, store, liters, totalPrice: total })}>保存</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---- 📍 走行 ---- */
+function TripTab({ logs, onAdd, onDel }) {
+  const [showModal, setShowModal] = useState(false);
+  const [statPeriod, setStatPeriod] = useState("month");
+
+  const now = new Date();
+  const statsFiltered = useMemo(() => {
+    return logs.filter((l) => {
+      if (!l.date) return false;
+      const d = parseDate(l.date);
+      if (statPeriod === "day")   return fmtDate(d) === fmtDate(now);
+      if (statPeriod === "month") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      if (statPeriod === "year")  return d.getFullYear() === now.getFullYear();
+      return true;
+    });
+  }, [logs, statPeriod]);
+
+  const totalKm = statsFiltered.reduce((s, l) => s + Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0)), 0);
+
+  return (
+    <div>
+      <div className="car-summary">
+        <div className="viewswitch small" style={{ marginBottom: 8 }}>
+          {[["day","今日"],["month","今月"],["year","今年"]].map(([v,l]) => (
+            <button key={v} className={statPeriod===v?"vbtn active":"vbtn"} onClick={() => setStatPeriod(v)}>{l}</button>
+          ))}
+        </div>
+        <div className="car-stat"><div className="car-stat-val">{totalKm.toLocaleString()}<span className="car-stat-unit">km</span></div><div className="car-stat-label">走行距離</div></div>
+      </div>
+      <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 走行記録を追加</button>
+      <div className="car-list">
+        {logs.map((l) => {
+          const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+          return (
+            <div key={l.id} className="car-item">
+              <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.memo && <span className="car-item-sub">{l.memo}</span>}</div>
+              <div className="car-item-row">
+                <span className="car-chip gray">{Number(l.startOdo).toLocaleString()}km →</span>
+                <span className="car-chip gray">{Number(l.endOdo).toLocaleString()}km</span>
+                <span className="car-chip blue">+{km.toLocaleString()}km</span>
+                <button className="evdel" onClick={() => onDel(l.id)}>✕</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {showModal && (
+        <TripModal onCancel={() => setShowModal(false)} onSave={(d) => { onAdd(d); setShowModal(false); }} />
+      )}
+    </div>
+  );
+}
+
+function TripModal({ onCancel, onSave }) {
+  const [date, setDate]       = useState(fmtDate(new Date()));
+  const [startOdo, setStart]  = useState("");
+  const [endOdo, setEnd]      = useState("");
+  const [memo, setMemo]       = useState("");
+
+  const km = startOdo && endOdo ? Math.max(0, Number(endOdo) - Number(startOdo)) : null;
+
+  return (
+    <Modal onClose={onCancel}>
+      <h3>📍 走行記録</h3>
+      <label className="flabel">日付</label>
+      <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <label className="flabel">スタート（ODO km）</label>
+      <input type="number" className="finput" value={startOdo} onChange={(e) => setStart(e.target.value)} placeholder="例：12000" min="0" />
+      <label className="flabel">エンド（ODO km）</label>
+      <input type="number" className="finput" value={endOdo} onChange={(e) => setEnd(e.target.value)} placeholder="例：12150" min="0" />
+      {km !== null && <div className="car-calc-hint">走行距離：{km.toLocaleString()} km</div>}
+      <label className="flabel">メモ（目的地・移動場所など）</label>
+      <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：大阪→東京" />
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onCancel}>キャンセル</button>
+        <button className="btn primary" disabled={!startOdo || !endOdo} onClick={() => onSave({ date, startOdo, endOdo, memo })}>保存</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---- 🔧 メンテナンス ---- */
+function MaintenanceTab({ logs, onAdd, onDel }) {
+  const [showModal, setShowModal] = useState(false);
+
+  return (
+    <div>
+      <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ メンテナンス記録を追加</button>
+      <div className="car-list">
+        {logs.map((l) => (
+          <div key={l.id} className="car-item">
+            <div className="car-item-date">
+              {fmtJpDate(parseDate(l.date), true)}
+              {l.cost && <span className="car-chip green" style={{marginLeft:8}}>¥{Number(l.cost).toLocaleString()}</span>}
+            </div>
+            <div className="car-item-title">🔧 {l.title}</div>
+            {l.memo && <div className="car-item-memo">{l.memo}</div>}
+            {l.nextDate && <div className="car-item-next">次回: {fmtJpDate(parseDate(l.nextDate), true)}</div>}
+            <button className="evdel" style={{marginTop:4}} onClick={() => onDel(l.id)}>✕</button>
+          </div>
+        ))}
+      </div>
+      {showModal && (
+        <MaintenanceModal onCancel={() => setShowModal(false)} onSave={(d, link) => { onAdd(d, link); setShowModal(false); }} />
+      )}
+    </div>
+  );
+}
+
+function MaintenanceModal({ onCancel, onSave }) {
+  const [date, setDate]       = useState(fmtDate(new Date()));
+  const [title, setTitle]     = useState("");
+  const [cost, setCost]       = useState("");
+  const [memo, setMemo]       = useState("");
+  const [nextDate, setNext]   = useState("");
+  const [linkCal, setLinkCal] = useState(true);
+
+  return (
+    <Modal onClose={onCancel}>
+      <h3>🔧 メンテナンス記録</h3>
+      <label className="flabel">日付</label>
+      <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <label className="flabel">内容</label>
+      <input type="text" className="finput" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：オイル交換、タイヤ交換" />
+      <label className="flabel">費用（円・任意）</label>
+      <input type="number" className="finput" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" min="0" />
+      <label className="flabel">次回予定日（任意）</label>
+      <input type="date" className="finput" value={nextDate} onChange={(e) => setNext(e.target.value)} />
+      <label className="flabel">メモ（任意）</label>
+      <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：交換後の状態など" />
+      <div className="cal-link-row">
+        <label className="cal-link-label">
+          <input type="checkbox" checked={linkCal} onChange={(e) => setLinkCal(e.target.checked)} />
+          　予定カレンダーにも追加する
+        </label>
+      </div>
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onCancel}>キャンセル</button>
+        <button className="btn primary" disabled={!title.trim()} onClick={() => onSave({ date, title: title.trim(), cost, memo, nextDate }, linkCal)}>保存</button>
+      </div>
+    </Modal>
+  );
+}
+
 function PresetManagerModal({ title, presets, colors, onClose, onSave }) {
   const [list, setList] = useState(presets);
   const [newName, setNewName] = useState("");
@@ -1757,6 +2018,42 @@ function Style() {
         padding: 8px 12px; font-size: 12px; margin-bottom: 8px; text-align: center;
       }
       .statsfilters { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+      .car-summary {
+        background: #fff; border-radius: 10px; padding: 14px;
+        margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
+      }
+      .car-stat { text-align: center; }
+      .car-stat-val { font-size: 26px; font-weight: bold; color: #333; }
+      .car-stat-unit { font-size: 14px; color: #888; margin-left: 2px; }
+      .car-stat-label { font-size: 11px; color: #999; margin-top: 2px; }
+      .car-add-btn {
+        width: 100%; padding: 12px; border: 2px dashed #ccc;
+        background: #fff; border-radius: 10px; font-size: 14px; color: #555;
+        margin-bottom: 12px; cursor: pointer;
+      }
+      .car-list { display: flex; flex-direction: column; gap: 10px; }
+      .car-item {
+        background: #fff; border-radius: 10px; padding: 12px 14px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .car-item-date { font-size: 12px; color: #888; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .car-item-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+      .car-item-sub { color: #aaa; }
+      .car-item-memo { font-size: 12px; color: #777; margin-top: 4px; }
+      .car-item-next { font-size: 12px; color: #ff7043; margin-top: 4px; }
+      .car-item-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+      .car-chip {
+        padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;
+      }
+      .car-chip.blue  { background: #e3f2fd; color: #1565c0; }
+      .car-chip.green { background: #e8f5e9; color: #2e7d32; }
+      .car-chip.gray  { background: #f5f5f5; color: #555; }
+      .car-calc-hint {
+        font-size: 13px; color: #4fc3f7; font-weight: bold;
+        margin-top: 6px; padding: 8px; background: #e3f6fd; border-radius: 8px; text-align: center;
+      }
+      .cal-link-row { margin-top: 12px; font-size: 13px; color: #555; }
+      .cal-link-label { display: flex; align-items: center; gap: 4px; }
       .statslist { display: flex; flex-direction: column; gap: 6px; }
       .statsitem {
         display: flex; align-items: center; gap: 8px;
