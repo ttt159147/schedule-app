@@ -1397,6 +1397,7 @@ function FuelModal({ onCancel, onSave }) {
       <h3>⛽ 給油記録</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
       <label className="flabel">店舗名（任意）</label>
       <input type="text" className="finput" value={store} onChange={(e) => setStore(e.target.value)} placeholder="例：コスモ石油〇〇店" />
       <label className="flabel">給油量（L）</label>
@@ -1478,6 +1479,7 @@ function TripModal({ onCancel, onSave }) {
       <h3>📍 走行記録</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
       <label className="flabel">スタート（ODO km）</label>
       <input type="number" className="finput" value={startOdo} onChange={(e) => setStart(e.target.value)} placeholder="例：12000" min="0" />
       <label className="flabel">エンド（ODO km）</label>
@@ -1534,6 +1536,7 @@ function MaintenanceModal({ onCancel, onSave }) {
       <h3>🔧 メンテナンス記録</h3>
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
       <label className="flabel">内容</label>
       <input type="text" className="finput" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：オイル交換、タイヤ交換" />
       <label className="flabel">費用（円・任意）</label>
