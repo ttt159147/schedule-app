@@ -1339,14 +1339,14 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
     const m = { id: uid(), ...entry };
     setMaintenance((p) => [m, ...p]);
     if (linkCal && entry.nextDate) {
-      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
+      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
     }
   }
   function delMaint(id)   { setMaintenance((p) => p.filter((x) => x.id !== id)); }
   function updMaint(id, entry, linkCal) {
     setMaintenance((p) => p.map((x) => x.id === id ? { ...x, ...entry } : x));
     if (linkCal && entry.nextDate) {
-      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#ff7043", time: "" });
+      onAddEvent({ date: entry.nextDate, title: "🔧【次回】" + entry.title, color: "#212121", time: entry.nextTime || "" });
     }
   }
 
@@ -1618,11 +1618,12 @@ function MaintenanceTab({ logs, onAdd, onDel, onUpd, presets }) {
 }
 
 function MaintenanceModal({ initial, presets, onCancel, onSave, onDelete }) {
-  const [date, setDate]     = useState(initial?.date || fmtDate(new Date()));
-  const [title, setTitle]   = useState(initial?.title || "");
-  const [cost, setCost]     = useState(initial?.cost || "");
-  const [memo, setMemo]     = useState(initial?.memo || "");
-  const [nextDate, setNext] = useState(initial?.nextDate || "");
+  const [date, setDate]       = useState(initial?.date || fmtDate(new Date()));
+  const [title, setTitle]     = useState(initial?.title || "");
+  const [cost, setCost]       = useState(initial?.cost || "");
+  const [memo, setMemo]       = useState(initial?.memo || "");
+  const [nextDate, setNext]   = useState(initial?.nextDate || "");
+  const [nextTime, setNextTime] = useState(initial?.nextTime || "");
   const [linkCal, setLinkCal] = useState(!initial);
   const isEdit = !!initial;
 
@@ -1646,6 +1647,8 @@ function MaintenanceModal({ initial, presets, onCancel, onSave, onDelete }) {
       <label className="flabel">次回予定日（任意）</label>
       <input type="date" className="finput" value={nextDate} onChange={(e) => setNext(e.target.value)} />
       {nextDate && <div className="dateweekdayhint">{fmtJpDate(parseDate(nextDate))}</div>}
+      <label className="flabel">次回予定時刻（任意）</label>
+      <input type="time" className="finput" value={nextTime} onChange={(e) => setNextTime(e.target.value)} />
       <label className="flabel">メモ（任意）</label>
       <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：交換後の状態など" />
       <div className="cal-link-row">
@@ -1657,7 +1660,7 @@ function MaintenanceModal({ initial, presets, onCancel, onSave, onDelete }) {
       <div className="modalbtns">
         {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
-        <button className="btn primary" disabled={!title.trim()} onClick={() => onSave({ date, title: title.trim(), cost, memo, nextDate }, linkCal)}>保存</button>
+        <button className="btn primary" disabled={!title.trim()} onClick={() => onSave({ date, title: title.trim(), cost, memo, nextDate, nextTime }, linkCal)}>保存</button>
       </div>
     </Modal>
   );
