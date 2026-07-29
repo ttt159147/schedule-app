@@ -276,6 +276,7 @@ export default function App() {
           setMaintenance={setCarMaintenance}
           carPresets={carPresets}
           setCarPresets={setCarPresets}
+          setEvents={setEvents}
           onAddEvent={(ev) => {
             const newId = uid();
             setEvents((prev) => [...prev, { id: newId, ...ev }]);
@@ -338,11 +339,9 @@ function CalendarTab({ events, setEvents, presets, setPresets, carMaintenance, s
   }
   function deleteEvent(id) {
     setEvents((prev) => prev.filter((e) => e.id !== id));
-    // メンテナンス記録と連動：calEventIdが一致するレコードのnextDate・nextTimeをクリア
+    // メンテナンス記録と連動：calEventIdが一致するレコードを削除
     if (setCarMaintenance) {
-      setCarMaintenance((prev) => prev.map((m) =>
-        m.calEventId === id ? { ...m, nextDate: "", nextTime: "", calEventId: null } : m
-      ));
+      setCarMaintenance((prev) => prev.filter((m) => m.calEventId !== id));
     }
   }
 
@@ -1337,7 +1336,7 @@ function ClothingStatsModal({ logs, onClose }) {
 
 const CAR_COLOR = "#ef5350";
 
-function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, carPresets, setCarPresets, onAddEvent }) {
+function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, carPresets, setCarPresets, onAddEvent, setEvents }) {
   const [subTab, setSubTab] = useState("fuel");
   const [showPresets, setShowPresets] = useState(false);
 
@@ -1355,7 +1354,14 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
     }
     setMaintenance((p) => [{ id: newId, ...entry, calEventId }, ...p]);
   }
-  function delMaint(id)   { setMaintenance((p) => p.filter((x) => x.id !== id)); }
+  function delMaint(id) {
+    // カレンダー側も連動削除
+    const target = maintenance.find((x) => x.id === id);
+    if (target?.calEventId && setEvents) {
+      setEvents((prev) => prev.filter((e) => e.id !== target.calEventId));
+    }
+    setMaintenance((p) => p.filter((x) => x.id !== id));
+  }
   function updMaint(id, entry, linkCal) {
     let calEventId = null;
     if (linkCal && entry.nextDate) {
@@ -1366,9 +1372,9 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
 
   return (
     <div className="tabcontent">
-      <div className="viewswitch" style={{ marginBottom: 8 }}>
+      <div className="car-subtab-row">
         {[["fuel","⛽ ガソリン"],["trip","📍 走行"],["maintenance","🔧 メンテ"]].map(([v,l]) => (
-          <button key={v} className={subTab === v ? "vbtn active" : "vbtn"} onClick={() => setSubTab(v)}>{l}</button>
+          <button key={v} className={subTab === v ? "car-subtab active" : "car-subtab"} onClick={() => setSubTab(v)}>{l}</button>
         ))}
       </div>
       <div style={{textAlign:"right", marginBottom: 10}}>
@@ -2199,6 +2205,28 @@ function Style() {
         padding: 8px 12px; font-size: 12px; margin-bottom: 8px; text-align: center;
       }
       .statsfilters { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+      .car-subtab-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .car-subtab {
+        flex: 1;
+        padding: 10px 4px;
+        border: 1px solid #ddd;
+        background: #fff;
+        border-radius: 10px;
+        font-size: 12px;
+        color: #555;
+        white-space: nowrap;
+        text-align: center;
+      }
+      .car-subtab.active {
+        background: #4fc3f7;
+        color: #fff;
+        border-color: #4fc3f7;
+        font-weight: bold;
+      }
       .car-summary {
         background: #fff; border-radius: 10px; padding: 14px;
         margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
