@@ -1913,7 +1913,8 @@ function Style() {
         font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
         background: #f5f6f8;
         min-height: 100vh;
-        max-width: 480px;
+        width: 100%;
+        max-width: 100%;
         margin: 0 auto;
         padding-bottom: 40px;
         color: #2d2d2d;
@@ -1925,6 +1926,15 @@ function Style() {
         top: 0;
         z-index: 5;
         box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .modalbox {
+        background: #fff;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        padding: 18px;
+        max-height: 85vh;
+        overflow-y: auto;
       }
       .header h1 {
         font-size: 18px;
@@ -2132,15 +2142,6 @@ function Style() {
         position: fixed; inset: 0; background: rgba(0,0,0,0.4);
         display: flex; align-items: flex-end; justify-content: center;
         z-index: 50;
-      }
-      .modalbox {
-        background: #fff;
-        width: 100%;
-        max-width: 480px;
-        border-radius: 16px 16px 0 0;
-        padding: 18px;
-        max-height: 85vh;
-        overflow-y: auto;
       }
       .modalbox h3 { margin-top: 0; font-size: 16px; }
       .flabel { font-size: 12px; color: #888; margin-top: 10px; display: block; }
