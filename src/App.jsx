@@ -1841,22 +1841,36 @@ function PresetTimeModal({ preset, onCancel, onSave }) {
 
 function CarPresetManagerModal({ presets, onClose, onSave }) {
   const [local, setLocal] = useState({ ...presets });
+  const [editingId, setEditingId] = useState(null); // { key, id }
+  const [editingName, setEditingName] = useState("");
+
   const CATS = [
     { key: "fuel",        label: "⛽ 給油店舗" },
     { key: "trip",        label: "📍 目的地・用途" },
     { key: "maintenance", label: "🔧 メンテ内容" },
   ];
 
-  function addItem(key, name) {
-    if (!name.trim()) return;
-    const next = { ...local, [key]: [...(local[key] || []), { id: uid(), name: name.trim() }] };
+  function commit(next) {
     setLocal(next);
     onSave(next);
   }
+  function addItem(key, name) {
+    if (!name.trim()) return;
+    commit({ ...local, [key]: [...(local[key] || []), { id: uid(), name: name.trim() }] });
+  }
   function removeItem(key, id) {
-    const next = { ...local, [key]: (local[key] || []).filter((x) => x.id !== id) };
-    setLocal(next);
-    onSave(next);
+    commit({ ...local, [key]: (local[key] || []).filter((x) => x.id !== id) });
+  }
+  function startEdit(key, id, name) {
+    setEditingId({ key, id });
+    setEditingName(name);
+  }
+  function saveEdit() {
+    if (!editingName.trim() || !editingId) return;
+    const { key, id } = editingId;
+    commit({ ...local, [key]: (local[key] || []).map((x) => x.id === id ? { ...x, name: editingName.trim() } : x) });
+    setEditingId(null);
+    setEditingName("");
   }
 
   return (
@@ -1865,16 +1879,33 @@ function CarPresetManagerModal({ presets, onClose, onSave }) {
       {CATS.map(({ key, label }) => (
         <div key={key} style={{ marginBottom: 16 }}>
           <div className="daypanel-title">{label}</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+          <div className="presetmanagerlist">
             {(local[key] || []).map((p) => (
-              <div key={p.id} className="presetchip addchip" style={{ display:"flex", alignItems:"center", gap:4 }}>
-                {p.name}
-                <button style={{ border:"none", background:"transparent", color:"#999", cursor:"pointer", padding:0 }}
-                  onClick={() => removeItem(key, p.id)}>✕</button>
+              <div key={p.id}>
+                {editingId?.key === key && editingId?.id === p.id ? (
+                  <div className="presetmanageritem">
+                    <input
+                      className="finput inline"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      autoFocus
+                    />
+                    <button className="btn primary" style={{flex:"0 0 auto",padding:"6px 10px",fontSize:12}} onClick={saveEdit}>保存</button>
+                    <button className="evdel" onClick={() => setEditingId(null)}>✕</button>
+                  </div>
+                ) : (
+                  <div className="presetmanageritem">
+                    <span style={{flex:1,fontSize:14}}>{p.name}</span>
+                    <button className="btn ghost" style={{flex:"0 0 auto",padding:"4px 10px",fontSize:12}} onClick={() => startEdit(key, p.id, p.name)}>編集</button>
+                    <button className="evdel" onClick={() => removeItem(key, p.id)}>✕</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <CarPresetAddRow onAdd={(name) => addItem(key, name)} />
+          <div style={{marginTop:8}}>
+            <CarPresetAddRow onAdd={(name) => addItem(key, name)} />
+          </div>
         </div>
       ))}
       <div className="modalbtns">
