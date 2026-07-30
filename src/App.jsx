@@ -90,7 +90,10 @@ function loadLS(key, fallback) {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
+    if (parsed === null || parsed === undefined) return fallback;
+    // 配列の場合は配列チェック、オブジェクトの場合はそのまま返す
+    if (Array.isArray(fallback)) return Array.isArray(parsed) ? parsed : fallback;
+    return typeof parsed === "object" ? parsed : fallback;
   } catch {
     return fallback;
   }
