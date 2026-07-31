@@ -1477,7 +1477,7 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
       )}
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 給油記録を追加</button>
       <div className="car-list">
-        {logs.map((l) => (
+        {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((l) => (
           <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
             <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.store && <span className="car-item-sub">{l.store}</span>}</div>
             <div className="car-item-row">
@@ -1613,7 +1613,7 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
       </div>
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 走行記録を追加</button>
       <div className="car-list">
-        {logs.map((l) => {
+        {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((l) => {
           const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
           return (
             <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
@@ -1689,7 +1689,7 @@ function MaintenanceTab({ logs, onAdd, onDel, onUpd, presets }) {
     <div>
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ メンテナンス記録を追加</button>
       <div className="car-list">
-        {logs.map((l) => (
+        {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((l) => (
           <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
             <div className="car-item-date">
               {fmtJpDate(parseDate(l.date), true)}
