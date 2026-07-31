@@ -1401,11 +1401,13 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
 function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
+  const [showMonthly, setShowMonthly] = useState(false);
 
   const totalLiters = logs.reduce((s, l) => s + Number(l.liters || 0), 0);
   const totalCost   = logs.reduce((s, l) => s + Number(l.totalPrice || 0), 0);
-  // 燃費: ODOが入力されている連続したエントリ間で計算
-  const sortedLogs = [...logs].sort((a,b) => a.date.localeCompare(b.date));
+  const sortedLogs  = [...logs].sort((a,b) => a.date.localeCompare(b.date));
+
+  // 給油ごとの燃費
   const feList = sortedLogs.map((l, i) => {
     if (!l.odo || i === 0) return null;
     const prev = sortedLogs.slice(0, i).reverse().find((x) => x.odo);
@@ -1413,12 +1415,33 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
     const km = Number(l.odo) - Number(prev.odo);
     const lt = Number(l.liters);
     if (km <= 0 || lt <= 0) return null;
-    return { id: l.id, fe: (km / lt).toFixed(1) };
+    return { id: l.id, date: l.date, fe: km / lt, km };
   }).filter(Boolean);
-  const feMap = Object.fromEntries(feList.map((x) => [x.id, x.fe]));
+  const feMap = Object.fromEntries(feList.map((x) => [x.id, x.fe.toFixed(1)]));
   const avgFe = feList.length
-    ? (feList.reduce((s, x) => s + Number(x.fe), 0) / feList.length).toFixed(1)
-    : null;
+    ? (feList.reduce((s, x) => s + x.fe, 0) / feList.length).toFixed(1) : null;
+
+  // 月別集計（燃費・給油量・費用）
+  const monthlyMap = {};
+  sortedLogs.forEach((l) => {
+    const ym = l.date.slice(0, 7); // "YYYY-MM"
+    if (!monthlyMap[ym]) monthlyMap[ym] = { liters: 0, cost: 0, fes: [] };
+    monthlyMap[ym].liters += Number(l.liters || 0);
+    monthlyMap[ym].cost   += Number(l.totalPrice || 0);
+  });
+  feList.forEach((x) => {
+    const ym = x.date.slice(0, 7);
+    if (monthlyMap[ym]) monthlyMap[ym].fes.push(x.fe);
+  });
+  const monthlyStats = Object.entries(monthlyMap)
+    .sort((a,b) => b[0].localeCompare(a[0]))
+    .map(([ym, v]) => ({
+      ym,
+      label: `${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`,
+      liters: v.liters.toFixed(1),
+      cost: v.cost,
+      avgFe: v.fes.length ? (v.fes.reduce((s,f)=>s+f,0)/v.fes.length).toFixed(1) : null,
+    }));
 
   return (
     <div>
@@ -1429,6 +1452,27 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
             <div className="car-stat"><div className="car-stat-val">¥{totalCost.toLocaleString()}</div><div className="car-stat-label">累計費用</div></div>
             {avgFe && <div className="car-stat"><div className="car-stat-val">{avgFe}<span className="car-stat-unit">km/L</span></div><div className="car-stat-label">平均燃費</div></div>}
           </div>
+          {monthlyStats.length > 0 && (
+            <div style={{marginTop:10}}>
+              <button className="btn ghost small" style={{width:"100%"}} onClick={() => setShowMonthly(v => !v)}>
+                {showMonthly ? "▲ 月別集計を閉じる" : "▼ 月別集計を見る"}
+              </button>
+              {showMonthly && (
+                <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+                  {monthlyStats.map((m) => (
+                    <div key={m.ym} className="car-item" style={{padding:"10px 12px"}}>
+                      <div className="car-item-date" style={{fontWeight:"bold", color:"#333"}}>{m.label}</div>
+                      <div className="car-item-row" style={{marginTop:4}}>
+                        <span className="car-chip blue">{m.liters}L</span>
+                        <span className="car-chip green">¥{m.cost.toLocaleString()}</span>
+                        {m.avgFe && <span className="car-chip orange">{m.avgFe}km/L</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 給油記録を追加</button>
@@ -1523,6 +1567,21 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
 
   const totalKm = statsFiltered.reduce((s, l) => s + Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0)), 0);
 
+  const [showMonthly, setShowMonthly] = useState(false);
+  const monthlyStats = useMemo(() => {
+    const map = {};
+    logs.forEach((l) => {
+      if (!l.date) return;
+      const ym = l.date.slice(0, 7);
+      const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+      if (!map[ym]) map[ym] = 0;
+      map[ym] += km;
+    });
+    return Object.entries(map)
+      .sort((a,b) => b[0].localeCompare(a[0]))
+      .map(([ym, km]) => ({ ym, label: `${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`, km }));
+  }, [logs]);
+
   return (
     <div>
       <div className="car-summary">
@@ -1532,6 +1591,25 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
           ))}
         </div>
         <div className="car-stat"><div className="car-stat-val">{totalKm.toLocaleString()}<span className="car-stat-unit">km</span></div><div className="car-stat-label">走行距離</div></div>
+        {monthlyStats.length > 0 && (
+          <div style={{marginTop:10}}>
+            <button className="btn ghost small" style={{width:"100%"}} onClick={() => setShowMonthly(v => !v)}>
+              {showMonthly ? "▲ 月別走行距離を閉じる" : "▼ 月別走行距離を見る"}
+            </button>
+            {showMonthly && (
+              <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+                {monthlyStats.map((m) => (
+                  <div key={m.ym} className="car-item" style={{padding:"10px 12px"}}>
+                    <div className="car-item-row" style={{justifyContent:"space-between"}}>
+                      <span style={{fontWeight:"bold", color:"#333"}}>{m.label}</span>
+                      <span className="car-chip blue">{m.km.toLocaleString()}km</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 走行記録を追加</button>
       <div className="car-list">
