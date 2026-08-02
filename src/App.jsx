@@ -1690,7 +1690,11 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
               key={p.id}
               className="presetchip addchip"
               style={{background:"#e8f5e9",color:"#2e7d32"}}
-              onClick={() => setMemo((prev) => prev ? `${prev}→${p.name}` : p.name)}
+              onClick={() => setMemo((prev) => {
+                if (!prev) return p.name;
+                if (prev.endsWith("→") || p.name.startsWith("→")) return prev + p.name;
+                return `${prev}→${p.name}`;
+              })}
             >
               {p.name}
             </button>
