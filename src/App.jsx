@@ -1421,6 +1421,19 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
   const avgFe = feList.length
     ? (feList.reduce((s, x) => s + x.fe, 0) / feList.length).toFixed(1) : null;
 
+  // トータル平均燃費：ODOがある記録のうち最初と最後の差 ÷ その間の給油量合計（最初の給油分は除く）
+  const odoLogs = sortedLogs.filter((l) => l.odo);
+  let totalAvgFe = null;
+  if (odoLogs.length >= 2) {
+    const firstOdo = Number(odoLogs[0].odo);
+    const lastOdo = Number(odoLogs[odoLogs.length - 1].odo);
+    const totalKmSpan = lastOdo - firstOdo;
+    const litersInBetween = odoLogs.slice(1).reduce((s, l) => s + Number(l.liters || 0), 0);
+    if (totalKmSpan > 0 && litersInBetween > 0) {
+      totalAvgFe = (totalKmSpan / litersInBetween).toFixed(1);
+    }
+  }
+
   // 月別集計（燃費・給油量・費用）
   const monthlyMap = {};
   sortedLogs.forEach((l) => {
@@ -1450,8 +1463,14 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
           <div style={{display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap"}}>
             <div className="car-stat"><div className="car-stat-val">{totalLiters.toFixed(1)}<span className="car-stat-unit">L</span></div><div className="car-stat-label">累計給油量</div></div>
             <div className="car-stat"><div className="car-stat-val">¥{totalCost.toLocaleString()}</div><div className="car-stat-label">累計費用</div></div>
-            {avgFe && <div className="car-stat"><div className="car-stat-val">{avgFe}<span className="car-stat-unit">km/L</span></div><div className="car-stat-label">平均燃費</div></div>}
+            {totalAvgFe && <div className="car-stat"><div className="car-stat-val">{totalAvgFe}<span className="car-stat-unit">km/L</span></div><div className="car-stat-label">トータル平均燃費</div></div>}
+            {avgFe && <div className="car-stat"><div className="car-stat-val">{avgFe}<span className="car-stat-unit">km/L</span></div><div className="car-stat-label">給油ごとの平均</div></div>}
           </div>
+          {!totalAvgFe && !avgFe && (
+            <div className="car-calc-hint" style={{marginTop:10}}>
+              燃費を計算するには、給油のたびに「ODOメーター」を入力してください（連続する2回分から自動計算されます）
+            </div>
+          )}
           {monthlyStats.length > 0 && (
             <div style={{marginTop:10}}>
               <button className="btn ghost small" style={{width:"100%"}} onClick={() => setShowMonthly(v => !v)}>
@@ -1465,7 +1484,7 @@ function FuelTab({ logs, onAdd, onDel, onUpd, presets }) {
                       <div className="car-item-row" style={{marginTop:4}}>
                         <span className="car-chip blue">{m.liters}L</span>
                         <span className="car-chip green">¥{m.cost.toLocaleString()}</span>
-                        {m.avgFe && <span className="car-chip orange">{m.avgFe}km/L</span>}
+                        {m.avgFe ? <span className="car-chip orange">{m.avgFe}km/L</span> : <span className="car-chip gray">燃費データなし</span>}
                       </div>
                     </div>
                   ))}
