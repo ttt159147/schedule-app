@@ -1686,8 +1686,24 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
       {presets.length > 0 && (
         <div className="presetrow" style={{margin:"6px 0"}}>
           {presets.map((p) => (
-            <button key={p.id} className="presetchip addchip" style={{background:"#e8f5e9",color:"#2e7d32"}} onClick={() => setMemo(p.name)}>{p.name}</button>
+            <button
+              key={p.id}
+              className="presetchip addchip"
+              style={{background:"#e8f5e9",color:"#2e7d32"}}
+              onClick={() => setMemo((prev) => prev ? `${prev}→${p.name}` : p.name)}
+            >
+              {p.name}
+            </button>
           ))}
+          {memo && (
+            <button
+              className="presetchip"
+              style={{background:"#eee",color:"#888"}}
+              onClick={() => setMemo("")}
+            >
+              クリア
+            </button>
+          )}
         </div>
       )}
       <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：大阪→東京" />
