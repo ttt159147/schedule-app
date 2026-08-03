@@ -260,7 +260,7 @@ export default function App() {
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
           <h1>スケジュール</h1>
-          <button className="gear" onClick={() => setShowBackup(true)} title="バックアップ">⚙️</button>
+          <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
           <button className={tab === "calendar" ? "tab active" : "tab"} onClick={() => setTab("calendar")}>
@@ -2364,6 +2364,7 @@ function Style() {
       }
       .vbtn.active { background: #4fc3f7; color: #fff; border-color: #4fc3f7; }
       .gear { border: none; background: transparent; font-size: 18px; padding: 4px 8px; }
+      .backup-btn { border: 1px solid #ddd; background: #fff; font-size: 12px; padding: 6px 10px; border-radius: 8px; color: #555; }
 
       .navrow {
         display: flex;
