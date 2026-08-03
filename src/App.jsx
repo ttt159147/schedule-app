@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
+import {
+  ResponsiveContainer, LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from "recharts";
 
 /* ===================== 定数 ===================== */
 
@@ -203,6 +207,7 @@ function DragHandle({ onPointerDown, onTouchStart }) {
 
 export default function App() {
   const [tab, setTab] = useState("calendar"); // calendar | clothing | car
+  const [showBackup, setShowBackup] = useState(false);
 
   /* ---- 予定データ ---- */
   const [events, setEvents] = useState(() => loadLS(LS_KEYS.events, []));
@@ -233,11 +238,30 @@ export default function App() {
   useEffect(() => saveLS(LS_KEYS.carMaintenance, carMaintenance), [carMaintenance]);
   useEffect(() => saveLS(LS_KEYS.carPresets, carPresets), [carPresets]);
 
+  function handleRestore(data) {
+    if (data.events) setEvents(data.events);
+    if (data.eventPresets) setEventPresets(data.eventPresets);
+    if (data.clothingLogs) setClothingLogs(data.clothingLogs);
+    if (data.clothingPresets) setClothingPresets(data.clothingPresets);
+    if (data.carFuel) setCarFuel(data.carFuel);
+    if (data.carTrip) setCarTrip(data.carTrip);
+    if (data.carMaintenance) setCarMaintenance(data.carMaintenance);
+    if (data.carPresets) setCarPresets(data.carPresets);
+  }
+
+  const allData = {
+    events, eventPresets, clothingLogs, clothingPresets,
+    carFuel, carTrip, carMaintenance, carPresets,
+  };
+
   return (
     <div className="app">
       <Style />
       <header className="header">
-        <h1>スケジュール</h1>
+        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
+          <h1>スケジュール</h1>
+          <button className="gear" onClick={() => setShowBackup(true)} title="バックアップ">⚙️</button>
+        </div>
         <div className="tabbar">
           <button className={tab === "calendar" ? "tab active" : "tab"} onClick={() => setTab("calendar")}>
             📅 予定
@@ -250,6 +274,14 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {showBackup && (
+        <BackupModal
+          data={allData}
+          onRestore={handleRestore}
+          onClose={() => setShowBackup(false)}
+        />
+      )}
 
       {tab === "calendar" && (
         <CalendarTab
@@ -1376,7 +1408,7 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
   return (
     <div className="tabcontent">
       <div className="car-subtab-row">
-        {[["fuel","⛽ ガソリン"],["trip","📍 走行"],["maintenance","🔧 メンテ"]].map(([v,l]) => (
+        {[["fuel","⛽ ガソリン"],["trip","📍 走行"],["maintenance","🔧 メンテ"],["graph","📊 グラフ"]].map(([v,l]) => (
           <button key={v} className={subTab === v ? "car-subtab active" : "car-subtab"} onClick={() => setSubTab(v)}>{l}</button>
         ))}
       </div>
@@ -1386,6 +1418,7 @@ function CarTab({ fuel, setFuel, trips, setTrips, maintenance, setMaintenance, c
       {subTab === "fuel"        && <FuelTab        logs={fuel}        onAdd={addFuel}  onDel={delFuel}  onUpd={updFuel}  presets={carPresets?.fuel || []}        />}
       {subTab === "trip"        && <TripTab        logs={trips}       onAdd={addTrip}  onDel={delTrip}  onUpd={updTrip}  presets={carPresets?.trip || []}        />}
       {subTab === "maintenance" && <MaintenanceTab logs={maintenance} onAdd={addMaint} onDel={delMaint} onUpd={updMaint} presets={carPresets?.maintenance || []} />}
+      {subTab === "graph"       && <CarGraphTab    fuel={fuel} trips={trips} />}
       {showPresets && (
         <CarPresetManagerModal
           presets={carPresets}
@@ -1720,6 +1753,134 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
   );
 }
 
+/* ---- 📊 グラフ ---- */
+function CarGraphTab({ fuel, trips }) {
+  const [period, setPeriod] = useState("month"); // month | year | all
+
+  // 給油：日付順にソート、ODOベースで燃費計算
+  const sortedFuel = useMemo(() => [...fuel].sort((a,b) => a.date.localeCompare(b.date)), [fuel]);
+  const feList = useMemo(() => sortedFuel.map((l, i) => {
+    if (!l.odo || i === 0) return null;
+    const prev = sortedFuel.slice(0, i).reverse().find((x) => x.odo);
+    if (!prev) return null;
+    const km = Number(l.odo) - Number(prev.odo);
+    const lt = Number(l.liters);
+    if (km <= 0 || lt <= 0) return null;
+    return { date: l.date, fe: km / lt };
+  }).filter(Boolean), [sortedFuel]);
+
+  // 集計単位でグループ化
+  function groupKey(dateStr) {
+    if (period === "year") return dateStr.slice(0, 4);
+    if (period === "all") return "全期間";
+    return dateStr.slice(0, 7);
+  }
+  function groupLabel(key) {
+    if (period === "all") return "全期間";
+    if (period === "year") return `${key}年`;
+    return `${parseInt(key.slice(5,7))}月`;
+  }
+
+  const fuelChartData = useMemo(() => {
+    const map = {};
+    sortedFuel.forEach((l) => {
+      const k = groupKey(l.date);
+      if (!map[k]) map[k] = { key: k, liters: 0, cost: 0 };
+      map[k].liters += Number(l.liters || 0);
+      map[k].cost += Number(l.totalPrice || 0);
+    });
+    feList.forEach((x) => {
+      const k = groupKey(x.date);
+      if (!map[k]) map[k] = { key: k, liters: 0, cost: 0 };
+      if (!map[k].fes) map[k].fes = [];
+      map[k].fes.push(x.fe);
+    });
+    return Object.values(map)
+      .sort((a,b) => a.key.localeCompare(b.key))
+      .map((v) => ({
+        label: groupLabel(v.key),
+        給油量: Number(v.liters.toFixed(1)),
+        金額: v.cost,
+        燃費: v.fes && v.fes.length ? Number((v.fes.reduce((s,f)=>s+f,0)/v.fes.length).toFixed(1)) : null,
+      }));
+  }, [sortedFuel, feList, period]);
+
+  const tripChartData = useMemo(() => {
+    const map = {};
+    trips.forEach((l) => {
+      if (!l.date) return;
+      const k = groupKey(l.date);
+      const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+      if (!map[k]) map[k] = 0;
+      map[k] += km;
+    });
+    return Object.entries(map)
+      .sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([k, km]) => ({ label: groupLabel(k), 走行距離: km }));
+  }, [trips, period]);
+
+  const hasFuelData = fuelChartData.length > 0;
+  const hasTripData = tripChartData.length > 0;
+
+  return (
+    <div>
+      <div className="viewswitch small" style={{ marginBottom: 14 }}>
+        {[["month","月別"],["year","年別"],["all","トータル"]].map(([v,l]) => (
+          <button key={v} className={period===v?"vbtn active":"vbtn"} onClick={() => setPeriod(v)}>{l}</button>
+        ))}
+      </div>
+
+      <div className="daypanel-title">⛽ 給油量・金額</div>
+      {hasFuelData ? (
+        <div className="graph-card">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={fuelChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar yAxisId="left" dataKey="給油量" fill="#4fc3f7" radius={[4,4,0,0]} />
+              <Bar yAxisId="right" dataKey="金額" fill="#81c784" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : <div className="empty">給油データがありません</div>}
+
+      <div className="daypanel-title" style={{marginTop:20}}>⛽ 燃費の推移</div>
+      {fuelChartData.some(d => d.燃費 !== null) ? (
+        <div className="graph-card">
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={fuelChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} domain={['auto','auto']} />
+              <Tooltip />
+              <Line type="monotone" dataKey="燃費" stroke="#ef5350" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : <div className="empty">燃費データがありません（ODOメーターを入力してください）</div>}
+
+      <div className="daypanel-title" style={{marginTop:20}}>📍 走行距離</div>
+      {hasTripData ? (
+        <div className="graph-card">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={tripChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="走行距離" fill="#ba68c8" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : <div className="empty">走行データがありません</div>}
+    </div>
+  );
+}
+
 function MaintenanceTab({ logs, onAdd, onDel, onUpd, presets }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -2040,6 +2201,85 @@ function CarPresetAddRow({ onAdd }) {
       <button className="btn primary" style={{ flex:"0 0 auto", padding:"8px 12px", fontSize:13 }}
         disabled={!name.trim()} onClick={() => { onAdd(name); setName(""); }}>追加</button>
     </div>
+  );
+}
+
+function BackupModal({ data, onRestore, onClose }) {
+  const [importError, setImportError] = useState("");
+  const [importSuccess, setImportSuccess] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  function handleExport() {
+    const json = JSON.stringify({ ...data, exportedAt: new Date().toISOString(), version: 1 }, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = fmtDate(new Date());
+    a.href = url;
+    a.download = `schedule-backup-${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportError("");
+    setImportSuccess(false);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (typeof parsed !== "object" || parsed === null) throw new Error("invalid");
+        onRestore(parsed);
+        setImportSuccess(true);
+      } catch (err) {
+        setImportError("ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください。");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  const totalCount =
+    (data.events?.length || 0) + (data.clothingLogs?.length || 0) +
+    (data.carFuel?.length || 0) + (data.carTrip?.length || 0) + (data.carMaintenance?.length || 0);
+
+  return (
+    <Modal onClose={onClose}>
+      <h3>⚙️ バックアップ</h3>
+
+      <div className="daypanel-title" style={{marginTop:8}}>📤 エクスポート</div>
+      <div className="car-calc-hint" style={{textAlign:"left"}}>
+        現在のデータ（予定・服装・車の記録すべて）をファイルとして保存できます。データ件数：約{totalCount}件
+      </div>
+      <button className="btn primary" style={{width:"100%", marginTop:10}} onClick={handleExport}>
+        バックアップファイルをダウンロード
+      </button>
+
+      <div className="daypanel-title" style={{marginTop:24}}>📥 インポート</div>
+      <div className="car-calc-hint" style={{textAlign:"left", background:"#fff3e0", color:"#e65100"}}>
+        ⚠️ バックアップファイルを読み込むと、現在のデータは上書きされます。
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        style={{display:"none"}}
+        onChange={handleFileSelect}
+      />
+      <button className="btn ghost" style={{width:"100%", marginTop:10}} onClick={() => fileInputRef.current?.click()}>
+        バックアップファイルを選択して復元
+      </button>
+      {importError && <div className="car-calc-hint" style={{background:"#ffebee",color:"#c62828",marginTop:8}}>{importError}</div>}
+      {importSuccess && <div className="car-calc-hint" style={{background:"#e8f5e9",color:"#2e7d32",marginTop:8}}>復元しました！</div>}
+
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onClose}>閉じる</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -2378,6 +2618,12 @@ function Style() {
         color: #fff;
         border-color: #4fc3f7;
         font-weight: bold;
+      }
+      .graph-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px 4px 4px 4px;
+        margin-bottom: 4px;
       }
       .car-summary {
         background: #fff; border-radius: 10px; padding: 14px;
