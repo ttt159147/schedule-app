@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell,
 } from "recharts";
 
 /* ===================== 定数 ===================== */
@@ -261,7 +260,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール</h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.08.06c</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
@@ -1336,7 +1335,9 @@ function ClothingStatsModal({ logs, onClose }) {
       if (!map[key]) map[key] = { name: l.name, color: l.color, value: 0 };
       map[key].value += 1;
     });
-    return Object.values(map).sort((a, b) => b.value - a.value);
+    const sorted = Object.values(map).sort((a, b) => b.value - a.value);
+    // トップ10のみ表示（棒グラフなので項目数が多くても見やすい）
+    return sorted.slice(0, 10);
   }, [logs, type, chartPeriod]);
 
   return (
@@ -1345,7 +1346,7 @@ function ClothingStatsModal({ logs, onClose }) {
 
       <div className="viewswitch small" style={{marginBottom: 10}}>
         <button className={view === "list" ? "vbtn active" : "vbtn"} onClick={() => setView("list")}>📋 リスト</button>
-        <button className={view === "chart" ? "vbtn active" : "vbtn"} onClick={() => setView("chart")}>🥧 円グラフ</button>
+        <button className={view === "chart" ? "vbtn active" : "vbtn"} onClick={() => setView("chart")}>📊 棒グラフ</button>
       </div>
 
       {view === "list" && (
@@ -1426,35 +1427,31 @@ function ClothingStatsModal({ logs, onClose }) {
             <div className="empty">記録がありません</div>
           ) : (
             <div className="graph-card">
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie
-                    data={chartStats}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={85}
-                  >
+              <div style={{fontSize:11, color:"#999", textAlign:"center", marginBottom:4}}>
+                着用回数 トップ{chartStats.length}
+              </div>
+              <ResponsiveContainer width="100%" height={Math.max(220, chartStats.length * 38)}>
+                <BarChart
+                  data={chartStats}
+                  layout="vertical"
+                  margin={{ top: 4, right: 24, left: 4, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={110}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Tooltip formatter={(v) => [`${v}回`, "着用回数"]} />
+                  <Bar dataKey="value" radius={[0,4,4,0]} barSize={20}>
                     {chartStats.map((entry, i) => (
                       <Cell key={i} fill={entry.color || EVENT_COLORS[i % EVENT_COLORS.length]} />
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
-              <div className="pie-legend-list">
-                {(() => {
-                  const total = chartStats.reduce((s, x) => s + x.value, 0);
-                  return chartStats.map((s, i) => (
-                    <div key={i} className="pie-legend-item">
-                      <span className="pie-legend-dot" style={{background: s.color || EVENT_COLORS[i % EVENT_COLORS.length]}} />
-                      <span className="pie-legend-name">{s.name}</span>
-                      <span className="pie-legend-val">{s.value}回（{((s.value/total)*100).toFixed(0)}%）</span>
-                    </div>
-                  ));
-                })()}
-              </div>
             </div>
           )}
         </>
