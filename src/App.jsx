@@ -1426,7 +1426,7 @@ function ClothingStatsModal({ logs, onClose }) {
             <div className="empty">記録がありません</div>
           ) : (
             <div className="graph-card">
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={240}>
                 <PieChart>
                   <Pie
                     data={chartStats}
@@ -1434,18 +1434,27 @@ function ClothingStatsModal({ logs, onClose }) {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    label={({ name, value }) => `${name} ${value}`}
-                    labelLine={false}
+                    outerRadius={85}
                   >
                     {chartStats.map((entry, i) => (
                       <Cell key={i} fill={entry.color || EVENT_COLORS[i % EVENT_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
+              <div className="pie-legend-list">
+                {(() => {
+                  const total = chartStats.reduce((s, x) => s + x.value, 0);
+                  return chartStats.map((s, i) => (
+                    <div key={i} className="pie-legend-item">
+                      <span className="pie-legend-dot" style={{background: s.color || EVENT_COLORS[i % EVENT_COLORS.length]}} />
+                      <span className="pie-legend-name">{s.name}</span>
+                      <span className="pie-legend-val">{s.value}回（{((s.value/total)*100).toFixed(0)}%）</span>
+                    </div>
+                  ));
+                })()}
+              </div>
             </div>
           )}
         </>
@@ -2417,7 +2426,7 @@ function Style() {
         max-width: 100%;
         border-radius: 16px 16px 0 0;
         padding: 18px;
-        max-height: 85vh;
+        max-height: 92vh;
         overflow-y: auto;
       }
       .header h1 {
@@ -2719,6 +2728,25 @@ function Style() {
         padding: 10px 4px 4px 4px;
         margin-bottom: 4px;
       }
+      .pie-legend-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 0 8px 8px 8px;
+      }
+      .pie-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        padding: 6px 8px;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
+      .pie-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .pie-legend-name { flex: 1; }
+      .pie-legend-val { color: #888; font-size: 12px; white-space: nowrap; }
       .car-summary {
         background: #fff; border-radius: 10px; padding: 14px;
         margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
