@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
 
 /* ===================== 定数 ===================== */
@@ -52,6 +53,7 @@ const DEFAULT_CLOTHING_PRESETS = [
   { id: "cbtm2", name: "黒パンツ", type: "bottom", color: CLOTHING_COLORS[14] },
   { id: "chat1", name: "キャップ", type: "hat", color: CLOTHING_COLORS[14] },
   { id: "cshoe1", name: "スニーカー", type: "shoes", color: CLOTHING_COLORS[16] },
+  { id: "cbag1", name: "トートバッグ", type: "bag", color: CLOTHING_COLORS[13] },
 ];
 
 /* ===================== ユーティリティ ===================== */
@@ -946,7 +948,13 @@ const CLOTHING_TYPES = [
   { type: "top",    label: "👕 上"   },
   { type: "bottom", label: "👖 下"   },
   { type: "shoes",  label: "👟 靴"   },
+  { type: "bag",    label: "👜 バッグ" },
 ];
+
+function clothingTypeName(type) {
+  const found = CLOTHING_TYPES.find((t) => t.type === type);
+  return found ? found.label.replace(/^\S+\s/, "") : type;
+}
 
 function ClothingTab({ logs, setLogs, presets, setPresets }) {
   const [date, setDate] = useState(fmtDate(new Date()));
@@ -1120,7 +1128,7 @@ function ClothingAddModal({ type, onCancel, onSave }) {
   const [color, setColor] = useState(CLOTHING_COLORS[0]);
   return (
     <Modal onClose={onCancel}>
-      <h3>{type === "top" ? "上を追加" : type === "bottom" ? "下を追加" : type === "hat" ? "帽子を追加" : "靴を追加"}</h3>
+      <h3>{clothingTypeName(type)}を追加</h3>
       <label className="flabel">名前</label>
       <input
         type="text"
@@ -1215,6 +1223,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
                 <option value="bottom">下</option>
                 <option value="hat">帽子</option>
                 <option value="shoes">靴</option>
+                <option value="bag">バッグ</option>
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
@@ -1252,6 +1261,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
           <option value="bottom">下</option>
           <option value="hat">帽子</option>
           <option value="shoes">靴</option>
+          <option value="bag">バッグ</option>
         </select>
       </div>
       <div className="colorgrid">
@@ -1276,7 +1286,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
 
 function ClothingStatsModal({ logs, onClose }) {
   const [period, setPeriod] = useState("all"); // week | month | all
-  const [type, setType] = useState("all"); // all | top | bottom
+  const [type, setType] = useState("all"); // all | top | bottom | ...
+  const [view, setView] = useState("list"); // list | chart
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -1306,58 +1317,140 @@ function ClothingStatsModal({ logs, onClose }) {
     return Object.values(map).sort((a, b) => b.count - a.count);
   }, [logs, period, type]);
 
+  // 円グラフ用：月別 or トータルの切り替え
+  const [chartPeriod, setChartPeriod] = useState("month"); // month | all
+  const chartStats = useMemo(() => {
+    const now = new Date();
+    const filtered = logs.filter((l) => {
+      if (!l.date || !l.name || !l.type) return false;
+      if (type !== "all" && l.type !== type) return false;
+      if (chartPeriod === "month") {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        try { if (parseDate(l.date) < from) return false; } catch { return false; }
+      }
+      return true;
+    });
+    const map = {};
+    filtered.forEach((l) => {
+      const key = l.type + "|" + l.name;
+      if (!map[key]) map[key] = { name: l.name, color: l.color, value: 0 };
+      map[key].value += 1;
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value);
+  }, [logs, type, chartPeriod]);
+
   return (
     <Modal onClose={onClose}>
       <h3>服装の集計</h3>
-      <div className="statsfilters">
-        <div className="viewswitch small">
-          {[
-            ["week", "今週"],
-            ["month", "今月"],
-            ["all", "全期間"],
-          ].map(([v, label]) => (
-            <button
-              key={v}
-              className={period === v ? "vbtn active" : "vbtn"}
-              onClick={() => setPeriod(v)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="viewswitch small">
-          {[
-            ["all", "全部"],
-            ["top", "上"],
-            ["bottom", "下"],
-            ["hat", "帽子"],
-            ["shoes", "靴"],
-          ].map(([v, label]) => (
-            <button
-              key={v}
-              className={type === v ? "vbtn active" : "vbtn"}
-              onClick={() => setType(v)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+
+      <div className="viewswitch small" style={{marginBottom: 10}}>
+        <button className={view === "list" ? "vbtn active" : "vbtn"} onClick={() => setView("list")}>📋 リスト</button>
+        <button className={view === "chart" ? "vbtn active" : "vbtn"} onClick={() => setView("chart")}>🥧 円グラフ</button>
       </div>
 
-      {stats.length === 0 && <div className="empty">記録がありません</div>}
-      <div className="statslist">
-        {stats.map((s) => (
-          <div key={s.type + s.name + s.color} className="statsitem">
-            <span className="evcolor" style={{ background: s.color }} />
-            <span className="evtitle">
-              {s.name}
-              <span className="statstype">{s.type === "top" ? "（上）" : s.type === "bottom" ? "（下）" : s.type === "hat" ? "（帽子）" : "（靴）"}</span>
-            </span>
-            <span className="statscount">{s.count}回</span>
-            <span className="statslast">最終: {fmtJpDate(parseDate(s.last), true)}</span>
+      {view === "list" && (
+        <>
+          <div className="statsfilters">
+            <div className="viewswitch small">
+              {[
+                ["week", "今週"],
+                ["month", "今月"],
+                ["all", "全期間"],
+              ].map(([v, label]) => (
+                <button
+                  key={v}
+                  className={period === v ? "vbtn active" : "vbtn"}
+                  onClick={() => setPeriod(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="viewswitch small">
+              {[
+                ["all", "全部"],
+                ["top", "上"],
+                ["bottom", "下"],
+                ["hat", "帽子"],
+                ["shoes", "靴"],
+                ["bag", "バッグ"],
+              ].map(([v, label]) => (
+                <button
+                  key={v}
+                  className={type === v ? "vbtn active" : "vbtn"}
+                  onClick={() => setType(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+
+          {stats.length === 0 && <div className="empty">記録がありません</div>}
+          <div className="statslist">
+            {stats.map((s) => (
+              <div key={s.type + s.name + s.color} className="statsitem">
+                <span className="evcolor" style={{ background: s.color }} />
+                <span className="evtitle">
+                  {s.name}
+                  <span className="statstype">（{clothingTypeName(s.type)}）</span>
+                </span>
+                <span className="statscount">{s.count}回</span>
+                <span className="statslast">最終: {fmtJpDate(parseDate(s.last), true)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {view === "chart" && (
+        <>
+          <div className="viewswitch small" style={{marginBottom: 10}}>
+            {[["month","今月"],["all","トータル"]].map(([v,l]) => (
+              <button key={v} className={chartPeriod===v?"vbtn active":"vbtn"} onClick={() => setChartPeriod(v)}>{l}</button>
+            ))}
+          </div>
+          <div className="viewswitch small" style={{marginBottom: 10}}>
+            {[
+              ["all", "全部"],
+              ["top", "上"],
+              ["bottom", "下"],
+              ["hat", "帽子"],
+              ["shoes", "靴"],
+              ["bag", "バッグ"],
+            ].map(([v, label]) => (
+              <button key={v} className={type === v ? "vbtn active" : "vbtn"} onClick={() => setType(v)}>{label}</button>
+            ))}
+          </div>
+          {chartStats.length === 0 ? (
+            <div className="empty">記録がありません</div>
+          ) : (
+            <div className="graph-card">
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={chartStats}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    label={({ name, value }) => `${name} ${value}`}
+                    labelLine={false}
+                  >
+                    {chartStats.map((entry, i) => (
+                      <Cell key={i} fill={entry.color || EVENT_COLORS[i % EVENT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      )}
+
       <div className="modalbtns">
         <button className="btn ghost" onClick={onClose}>閉じる</button>
       </div>
