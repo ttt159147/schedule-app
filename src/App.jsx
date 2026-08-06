@@ -2231,6 +2231,9 @@ function CarPresetManagerModal({ presets, onClose, onSave }) {
     setLocal(next);
     onSave(next);
   }
+  function commitCategory(key, nextList) {
+    commit({ ...local, [key]: nextList });
+  }
   function addItem(key, name) {
     if (!name.trim()) return;
     commit({ ...local, [key]: [...(local[key] || []), { id: uid(), name: name.trim() }] });
@@ -2256,30 +2259,18 @@ function CarPresetManagerModal({ presets, onClose, onSave }) {
       {CATS.map(({ key, label }) => (
         <div key={key} style={{ marginBottom: 16 }}>
           <div className="daypanel-title">{label}</div>
-          <div className="presetmanagerlist">
-            {(local[key] || []).map((p) => (
-              <div key={p.id}>
-                {editingId?.key === key && editingId?.id === p.id ? (
-                  <div className="presetmanageritem">
-                    <input
-                      className="finput inline"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      autoFocus
-                    />
-                    <button className="btn primary" style={{flex:"0 0 auto",padding:"6px 10px",fontSize:12}} onClick={saveEdit}>保存</button>
-                    <button className="evdel" onClick={() => setEditingId(null)}>✕</button>
-                  </div>
-                ) : (
-                  <div className="presetmanageritem">
-                    <span style={{flex:1,fontSize:14}}>{p.name}</span>
-                    <button className="btn ghost" style={{flex:"0 0 auto",padding:"4px 10px",fontSize:12}} onClick={() => startEdit(key, p.id, p.name)}>編集</button>
-                    <button className="evdel" onClick={() => removeItem(key, p.id)}>✕</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <CarPresetCategoryList
+            catKey={key}
+            list={local[key] || []}
+            onCommit={(nextList) => commitCategory(key, nextList)}
+            editingId={editingId}
+            editingName={editingName}
+            setEditingName={setEditingName}
+            onStartEdit={(id, name) => startEdit(key, id, name)}
+            onSaveEdit={saveEdit}
+            onCancelEdit={() => setEditingId(null)}
+            onRemove={(id) => removeItem(key, id)}
+          />
           <div style={{marginTop:8}}>
             <CarPresetAddRow onAdd={(name) => addItem(key, name)} />
           </div>
@@ -2289,6 +2280,49 @@ function CarPresetManagerModal({ presets, onClose, onSave }) {
         <button className="btn ghost" onClick={onClose}>閉じる</button>
       </div>
     </Modal>
+  );
+}
+
+function CarPresetCategoryList({
+  catKey, list, onCommit,
+  editingId, editingName, setEditingName,
+  onStartEdit, onSaveEdit, onCancelEdit, onRemove,
+}) {
+  const { itemRefs, draggingIndex, startDrag } = useDragReorder(list, onCommit);
+
+  return (
+    <div className="presetmanagerlist">
+      {list.map((p, i) => (
+        <div
+          key={p.id}
+          ref={(el) => (itemRefs.current[i] = el)}
+          className={draggingIndex === i ? "dragging" : ""}
+        >
+          {editingId?.key === catKey && editingId?.id === p.id ? (
+            <div className="presetmanageritem">
+              <input
+                className="finput inline"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                autoFocus
+              />
+              <button className="btn primary" style={{flex:"0 0 auto",padding:"6px 10px",fontSize:12}} onClick={onSaveEdit}>保存</button>
+              <button className="evdel" onClick={onCancelEdit}>✕</button>
+            </div>
+          ) : (
+            <div className="presetmanageritem">
+              <DragHandle
+                onPointerDown={(e) => startDrag(e, i)}
+                onTouchStart={(e) => startDrag(e, i)}
+              />
+              <span style={{flex:1,fontSize:14}}>{p.name}</span>
+              <button className="btn ghost" style={{flex:"0 0 auto",padding:"4px 10px",fontSize:12}} onClick={() => onStartEdit(p.id, p.name)}>編集</button>
+              <button className="evdel" onClick={() => onRemove(p.id)}>✕</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
