@@ -1349,7 +1349,7 @@ function ClothingStatsModal({ logs, onClose }) {
     });
     const map = {};
     filtered.forEach((l) => {
-      const key = l.type + "|" + l.name;
+      const key = l.type + "|" + l.name + "|" + (l.color || "");
       if (!map[key]) map[key] = { name: l.name, color: l.color, value: 0 };
       map[key].value += 1;
     });
