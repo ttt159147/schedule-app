@@ -1284,21 +1284,39 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
 }
 
 function ClothingStatsModal({ logs, onClose }) {
-  const [period, setPeriod] = useState("all"); // week | month | all
+  const [period, setPeriod] = useState("all"); // week | month | specific | all
   const [type, setType] = useState("all"); // all | top | bottom | ...
   const [view, setView] = useState("list"); // list | chart
 
+  // 記録がある月の一覧（新しい順）
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    logs.forEach((l) => { if (l.date) set.add(l.date.slice(0, 7)); });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [logs]);
+
+  const [selectedMonth, setSelectedMonth] = useState(() => availableMonths[0] || fmtDate(new Date()).slice(0, 7));
+
   const stats = useMemo(() => {
     const now = new Date();
-    let from = null;
+    let from = null, to = null;
     if (period === "week") from = startOfWeek(now);
     if (period === "month") from = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (period === "specific" && selectedMonth) {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      from = new Date(y, m - 1, 1);
+      to = new Date(y, m, 1); // 翌月1日（この日は含まない）
+    }
 
     const filtered = logs.filter((l) => {
       if (!l.date || !l.name || !l.type) return false;
       if (type !== "all" && l.type !== type) return false;
       if (from) {
-        try { if (parseDate(l.date) < from) return false; } catch { return false; }
+        try {
+          const d = parseDate(l.date);
+          if (d < from) return false;
+          if (to && d >= to) return false;
+        } catch { return false; }
       }
       return true;
     });
@@ -1314,7 +1332,7 @@ function ClothingStatsModal({ logs, onClose }) {
     });
 
     return Object.values(map).sort((a, b) => b.count - a.count);
-  }, [logs, period, type]);
+  }, [logs, period, type, selectedMonth]);
 
   // 円グラフ用：月別 or トータルの切り替え
   const [chartPeriod, setChartPeriod] = useState("month"); // month | all
@@ -1356,6 +1374,7 @@ function ClothingStatsModal({ logs, onClose }) {
               {[
                 ["week", "今週"],
                 ["month", "今月"],
+                ["specific", "月を選択"],
                 ["all", "全期間"],
               ].map(([v, label]) => (
                 <button
@@ -1367,6 +1386,21 @@ function ClothingStatsModal({ logs, onClose }) {
                 </button>
               ))}
             </div>
+            {period === "specific" && (
+              <select
+                className="finput"
+                style={{marginTop:0}}
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+              >
+                {availableMonths.length === 0 && <option value="">記録がありません</option>}
+                {availableMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    {ym.slice(0,4)}年{parseInt(ym.slice(5,7))}月
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="viewswitch small">
               {[
                 ["all", "全部"],
