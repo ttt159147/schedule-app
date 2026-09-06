@@ -960,12 +960,18 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showAdd, setShowAdd] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [season, setSeason] = useState("all"); // all | ss | aw
 
   // ドラッグ状態（セクション間移動用）
   const [dragging, setDragging] = useState(null); // { id, name, color, fromType }
   const [overType, setOverType] = useState(null);  // ドロップ先のtype
 
   const dayLogs = useMemo(() => logs.filter((l) => l.date === date), [logs, date]);
+
+  const visiblePresets = useMemo(() => {
+    if (season === "all") return presets;
+    return presets.filter((p) => !p.season || p.season === "all" || p.season === season);
+  }, [presets, season]);
 
   function addLog(type, name, color) {
     setLogs((prev) => [...prev, { id: uid(), date, type, name, color }]);
@@ -1014,6 +1020,12 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
         <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), 1)))}>›</button>
       </div>
 
+      <div className="viewswitch small" style={{marginBottom: 10}}>
+        {[["all","全季節"],["ss","☀️ 春夏"],["aw","❄️ 秋冬"]].map(([v,l]) => (
+          <button key={v} className={season===v?"vbtn active":"vbtn"} onClick={() => setSeason(v)}>{l}</button>
+        ))}
+      </div>
+
       <div className="toprow-actions">
         <button className="btn ghost small" onClick={() => setShowPresetManager(true)}>⚙️ 項目管理</button>
         <button className="btn ghost small" onClick={() => setShowStats(true)}>📊 集計を見る</button>
@@ -1029,7 +1041,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
           label={label}
           type={type}
           items={dayLogs.filter((l) => l.type === type)}
-          presets={presets.filter((p) => p.type === type)}
+          presets={visiblePresets.filter((p) => p.type === type)}
           onQuickAdd={(p) => addLog(type, p.name, p.color)}
           onAddCustom={() => setShowAdd(type)}
           onDelete={deleteLog}
@@ -1165,6 +1177,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   const [list, setList] = useState(presets);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("top");
+  const [newSeason, setNewSeason] = useState("all");
   const [newColor, setNewColor] = useState(CLOTHING_COLORS[0]);
   const [colorEditId, setColorEditId] = useState(null);
 
@@ -1177,7 +1190,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
 
   function addItem() {
     if (!newName.trim()) return;
-    commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor }]);
+    commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor, season: newSeason }]);
     setNewName("");
   }
   function removeItem(id) {
@@ -1213,6 +1226,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
                 value={p.name}
                 onChange={(e) => updateItem(p.id, { name: e.target.value })}
               />
+              {p.season === "ss" && <span style={{fontSize:14}}>☀️</span>}
+              {p.season === "aw" && <span style={{fontSize:14}}>❄️</span>}
               <select
                 className="finput inline select"
                 value={p.type}
@@ -1223,6 +1238,15 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
                 <option value="hat">帽子</option>
                 <option value="shoes">靴</option>
                 <option value="bag">バッグ</option>
+              </select>
+              <select
+                className="finput inline select"
+                value={p.season || "all"}
+                onChange={(e) => updateItem(p.id, { season: e.target.value })}
+              >
+                <option value="all">全季節</option>
+                <option value="ss">☀️春夏</option>
+                <option value="aw">❄️秋冬</option>
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
@@ -1261,6 +1285,15 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
           <option value="hat">帽子</option>
           <option value="shoes">靴</option>
           <option value="bag">バッグ</option>
+        </select>
+        <select
+          className="finput inline select"
+          value={newSeason}
+          onChange={(e) => setNewSeason(e.target.value)}
+        >
+          <option value="all">全季節</option>
+          <option value="ss">☀️春夏</option>
+          <option value="aw">❄️秋冬</option>
         </select>
       </div>
       <div className="colorgrid">
