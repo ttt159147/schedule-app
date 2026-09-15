@@ -1021,7 +1021,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
       </div>
 
       <div className="viewswitch small" style={{marginBottom: 10}}>
-        {[["all","全季節"],["ss","☀️ 春夏"],["aw","❄️ 秋冬"]].map(([v,l]) => (
+        {[["all","全季節"],["ss","☀️ 春夏"],["sa","🍂 春秋"],["aw","❄️ 秋冬"]].map(([v,l]) => (
           <button key={v} className={season===v?"vbtn active":"vbtn"} onClick={() => setSeason(v)}>{l}</button>
         ))}
       </div>
@@ -1227,6 +1227,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
                 onChange={(e) => updateItem(p.id, { name: e.target.value })}
               />
               {p.season === "ss" && <span style={{fontSize:14}}>☀️</span>}
+              {p.season === "sa" && <span style={{fontSize:14}}>🍂</span>}
               {p.season === "aw" && <span style={{fontSize:14}}>❄️</span>}
               <select
                 className="finput inline select"
@@ -1246,6 +1247,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               >
                 <option value="all">全季節</option>
                 <option value="ss">☀️春夏</option>
+                <option value="sa">🍂春秋</option>
                 <option value="aw">❄️秋冬</option>
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
@@ -1293,6 +1295,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
         >
           <option value="all">全季節</option>
           <option value="ss">☀️春夏</option>
+          <option value="sa">🍂春秋</option>
           <option value="aw">❄️秋冬</option>
         </select>
       </div>
