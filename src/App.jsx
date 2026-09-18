@@ -14,7 +14,7 @@ const EVENT_COLORS = [
 ];
 
 const CLOTHING_COLORS = [
-  "#f44336", "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
+  "#ffffff", "#f44336", "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
   "#8c9eff", "#82b1ff", "#80d8ff", "#84ffff",
   "#a7ffeb", "#b9f6ca", "#ccff90", "#ffe57f",
   "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161", "#bdbdbd",
@@ -1017,6 +1017,15 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
         <div className="navlabel" onClick={() => setDate(fmtDate(new Date()))}>
           {fmtJpDate(parseDate(date))}
         </div>
+        <label className="navbtn calbtn" title="カレンダーから選択">
+          📅
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+            className="hidden-date-input"
+          />
+        </label>
         <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), 1)))}>›</button>
       </div>
 
@@ -2585,6 +2594,22 @@ function Style() {
         box-shadow: 0 1px 2px rgba(0,0,0,0.1);
       }
       .navlabel { font-weight: bold; font-size: 15px; }
+      .calbtn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .hidden-date-input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+      }
 
       .weekrow.header { display: flex; margin-bottom: 4px; }
       .weekcell.header {
@@ -2688,7 +2713,7 @@ function Style() {
         border-radius: 8px;
         font-size: 13px;
       }
-      .evcolor { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .evcolor { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15); }
       .colorbtn {
         width: 22px; height: 22px; border: 2px solid #fff; box-shadow: 0 0 0 1px #ddd;
         cursor: pointer; padding: 0; flex-shrink: 0;
@@ -2756,7 +2781,9 @@ function Style() {
         display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
       }
       .colorswatch {
-        width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;
+        width: 28px; height: 28px; border-radius: 50%;
+        border: 2px solid transparent;
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
       }
       .colorswatch.selected { border-color: #333; }
 
