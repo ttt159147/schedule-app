@@ -961,6 +961,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
   const [showAdd, setShowAdd] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [season, setSeason] = useState("all"); // all | ss | aw
+  const [showCalPicker, setShowCalPicker] = useState(false);
 
   // ドラッグ状態（セクション間移動用）
   const [dragging, setDragging] = useState(null); // { id, name, color, fromType }
@@ -1017,15 +1018,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
         <div className="navlabel" onClick={() => setDate(fmtDate(new Date()))}>
           {fmtJpDate(parseDate(date))}
         </div>
-        <label className="navbtn calbtn" title="カレンダーから選択">
-          📅
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            className="hidden-date-input"
-          />
-        </label>
+        <button className="navbtn" title="カレンダーから選択" onClick={() => setShowCalPicker(true)}>📅</button>
         <button className="navbtn" onClick={() => setDate(fmtDate(addDays(parseDate(date), 1)))}>›</button>
       </div>
 
@@ -1082,6 +1075,15 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
 
       {showStats && (
         <ClothingStatsModal logs={logs} onClose={() => setShowStats(false)} />
+      )}
+
+      {showCalPicker && (
+        <ClothingCalendarPicker
+          logs={logs}
+          selectedDate={date}
+          onSelect={(d) => { setDate(d); setShowCalPicker(false); }}
+          onClose={() => setShowCalPicker(false)}
+        />
       )}
     </div>
   );
@@ -1535,6 +1537,73 @@ function ClothingStatsModal({ logs, onClose }) {
           )}
         </>
       )}
+
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onClose}>閉じる</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ClothingCalendarPicker({ logs, selectedDate, onSelect, onClose }) {
+  const [cursor, setCursor] = useState(() => parseDate(selectedDate));
+
+  // 入力済みの日付セット（1件でも記録があればチェック対象）
+  const loggedDates = useMemo(() => {
+    const set = new Set();
+    logs.forEach((l) => { if (l.date) set.add(l.date); });
+    return set;
+  }, [logs]);
+
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const gridStart = startOfWeek(first);
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  const today = fmtDate(new Date());
+
+  function shiftMonth(n) {
+    setCursor((c) => {
+      const r = new Date(c);
+      r.setMonth(r.getMonth() + n);
+      return r;
+    });
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <h3>📅 日付を選択</h3>
+      <div className="navrow" style={{marginTop: 4}}>
+        <button className="navbtn" onClick={() => shiftMonth(-1)}>‹</button>
+        <div className="navlabel">{cursor.getFullYear()}年{cursor.getMonth() + 1}月</div>
+        <button className="navbtn" onClick={() => shiftMonth(1)}>›</button>
+      </div>
+
+      <div className="weekrow header" style={{marginTop: 10}}>
+        {DOW.map((d) => (
+          <div className="weekcell header" key={d}>{d}</div>
+        ))}
+      </div>
+      <div className="monthgrid">
+        {cells.map((d) => {
+          const ds = fmtDate(d);
+          const inMonth = d.getMonth() === cursor.getMonth();
+          const hasLog = loggedDates.has(ds);
+          return (
+            <div
+              key={ds}
+              className={
+                "monthcell" +
+                (inMonth ? "" : " dim") +
+                (ds === selectedDate ? " selected" : "") +
+                (ds === today ? " today" : "")
+              }
+              onClick={() => onSelect(ds)}
+            >
+              <div className="dnum">{d.getDate()}</div>
+              {hasLog && <div className="cal-check">✓</div>}
+            </div>
+          );
+        })}
+      </div>
 
       <div className="modalbtns">
         <button className="btn ghost" onClick={onClose}>閉じる</button>
@@ -2639,6 +2708,7 @@ function Style() {
       .dots { display: flex; justify-content: center; gap: 2px; flex-wrap: wrap; margin-top: 3px; }
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
+      .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
 
       .weekrow { display: flex; gap: 4px; }
       .weekcell {
