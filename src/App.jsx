@@ -17,7 +17,7 @@ const CLOTHING_COLORS = [
   "#ffffff", "#f44336", "#ff8a80", "#ff80ab", "#ea80fc", "#b388ff",
   "#8c9eff", "#82b1ff", "#80d8ff", "#84ffff",
   "#a7ffeb", "#b9f6ca", "#ccff90", "#ffe57f",
-  "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161", "#bdbdbd",
+  "#ffd180", "#bcaaa4", "#212121", "#1a237e", "#616161", "#bdbdbd", "#556b2f",
 ];
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
