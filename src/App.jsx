@@ -1873,12 +1873,19 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
       if (!l.date) return;
       const ym = l.date.slice(0, 7);
       const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
-      if (!map[ym]) map[ym] = 0;
-      map[ym] += km;
+      if (!map[ym]) map[ym] = { km: 0, trips: [] };
+      map[ym].km += km;
+      map[ym].trips.push({ ...l, km });
     });
     return Object.entries(map)
       .sort((a,b) => b[0].localeCompare(a[0]))
-      .map(([ym, km]) => ({ ym, label: `${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`, km }));
+      .map(([ym, v]) => ({
+        ym,
+        label: `${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`,
+        km: v.km,
+        // 月内は日付の古い順（1日→月末）。同日は入力順
+        trips: [...v.trips].sort((a, b) => a.date.localeCompare(b.date)),
+      }));
   }, [logs]);
 
   return (
@@ -1902,6 +1909,24 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
                     <div className="car-item-row" style={{justifyContent:"space-between"}}>
                       <span style={{fontWeight:"bold", color:"#333"}}>{m.label}</span>
                       <span className="car-chip blue">{m.km.toLocaleString()}km</span>
+                    </div>
+                    <div className="trip-month-detail">
+                      {m.trips.map((t) => (
+                        <div key={t.id} className="trip-month-row" onClick={() => setEditItem(t)}>
+                          <div className="trip-month-top">
+                            <span className="trip-month-date">
+                              {parseInt(t.date.slice(5,7))}/{t.date.slice(8,10)}
+                            </span>
+                            <span className="trip-month-memo">{t.memo || ""}</span>
+                          </div>
+                          <div className="trip-month-bottom">
+                            <span className="trip-month-odo">
+                              {Number(t.startOdo).toLocaleString()}→{Number(t.endOdo).toLocaleString()}
+                            </span>
+                            <span className="trip-month-km">{t.km.toLocaleString()}km</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -2709,6 +2734,28 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .trip-month-detail {
+        margin-top: 8px;
+        border-top: 1px solid #f0f0f0;
+        padding-top: 6px;
+        display: flex;
+        flex-direction: column;
+      }
+      .trip-month-row {
+        padding: 6px 2px;
+        border-bottom: 1px dashed #eee;
+        cursor: pointer;
+      }
+      .trip-month-row:last-child { border-bottom: none; }
+      .trip-month-top { display: flex; gap: 10px; align-items: baseline; }
+      .trip-month-date { font-size: 13px; font-weight: bold; color: #333; min-width: 38px; }
+      .trip-month-memo { font-size: 13px; color: #555; word-break: break-all; }
+      .trip-month-bottom {
+        display: flex; justify-content: space-between; align-items: baseline;
+        margin-top: 2px; padding-left: 48px;
+      }
+      .trip-month-odo { font-size: 12px; color: #888; }
+      .trip-month-km { font-size: 12px; color: #1565c0; font-weight: bold; }
 
       .weekrow { display: flex; gap: 4px; }
       .weekcell {
