@@ -1867,6 +1867,10 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
   const totalKm = statsFiltered.reduce((s, l) => s + Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0)), 0);
 
   const [showMonthly, setShowMonthly] = useState(false);
+  const [openMonths, setOpenMonths] = useState({}); // { "2026-09": true }
+  function toggleMonth(ym) {
+    setOpenMonths((prev) => ({ ...prev, [ym]: !prev[ym] }));
+  }
   const monthlyStats = useMemo(() => {
     const map = {};
     logs.forEach((l) => {
@@ -1906,28 +1910,38 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
               <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
                 {monthlyStats.map((m) => (
                   <div key={m.ym} className="car-item" style={{padding:"10px 12px"}}>
-                    <div className="car-item-row" style={{justifyContent:"space-between"}}>
-                      <span style={{fontWeight:"bold", color:"#333"}}>{m.label}</span>
+                    <div
+                      className="car-item-row trip-month-header"
+                      style={{justifyContent:"space-between"}}
+                      onClick={() => toggleMonth(m.ym)}
+                    >
+                      <span style={{fontWeight:"bold", color:"#333"}}>
+                        <span className="trip-month-arrow">{openMonths[m.ym] ? "▼" : "▶"}</span>
+                        {m.label}
+                        <span className="trip-month-count">（{m.trips.length}件）</span>
+                      </span>
                       <span className="car-chip blue">{m.km.toLocaleString()}km</span>
                     </div>
-                    <div className="trip-month-detail">
-                      {m.trips.map((t) => (
-                        <div key={t.id} className="trip-month-row" onClick={() => setEditItem(t)}>
-                          <div className="trip-month-top">
-                            <span className="trip-month-date">
-                              {parseInt(t.date.slice(5,7))}/{t.date.slice(8,10)}
-                            </span>
-                            <span className="trip-month-memo">{t.memo || ""}</span>
+                    {openMonths[m.ym] && (
+                      <div className="trip-month-detail">
+                        {m.trips.map((t) => (
+                          <div key={t.id} className="trip-month-row" onClick={() => setEditItem(t)}>
+                            <div className="trip-month-top">
+                              <span className="trip-month-date">
+                                {parseInt(t.date.slice(5,7))}/{t.date.slice(8,10)}
+                              </span>
+                              <span className="trip-month-memo">{t.memo || ""}</span>
+                            </div>
+                            <div className="trip-month-bottom">
+                              <span className="trip-month-odo">
+                                {Number(t.startOdo).toLocaleString()}→{Number(t.endOdo).toLocaleString()}
+                              </span>
+                              <span className="trip-month-km">{t.km.toLocaleString()}km</span>
+                            </div>
                           </div>
-                          <div className="trip-month-bottom">
-                            <span className="trip-month-odo">
-                              {Number(t.startOdo).toLocaleString()}→{Number(t.endOdo).toLocaleString()}
-                            </span>
-                            <span className="trip-month-km">{t.km.toLocaleString()}km</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2734,6 +2748,9 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .trip-month-header { cursor: pointer; }
+      .trip-month-arrow { display: inline-block; width: 18px; font-size: 10px; color: #999; }
+      .trip-month-count { font-weight: normal; font-size: 11px; color: #999; margin-left: 4px; }
       .trip-month-detail {
         margin-top: 8px;
         border-top: 1px solid #f0f0f0;
