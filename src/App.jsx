@@ -1083,7 +1083,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
       )}
 
       {showStats && (
-        <ClothingStatsModal logs={logs} onClose={() => setShowStats(false)} />
+        <ClothingStatsModal logs={logs} presets={presets} onClose={() => setShowStats(false)} />
       )}
 
       {showCalPicker && (
@@ -1198,6 +1198,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("top");
   const [newSeason, setNewSeason] = useState("all");
+  const [newPrice, setNewPrice] = useState("");
   const [newColor, setNewColor] = useState(CLOTHING_COLORS[0]);
   const [colorEditId, setColorEditId] = useState(null);
 
@@ -1210,8 +1211,9 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
 
   function addItem() {
     if (!newName.trim()) return;
-    commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor, season: newSeason }]);
+    commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor, season: newSeason, price: newPrice }]);
     setNewName("");
+    setNewPrice("");
   }
   function removeItem(id) {
     commit(list.filter((p) => p.id !== id));
@@ -1272,6 +1274,19 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
+            <div className="preset-price-row">
+              <span>購入金額</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                className="finput preset-price-input"
+                placeholder="不明なら空欄"
+                value={p.price ?? ""}
+                onChange={(e) => updateItem(p.id, { price: e.target.value })}
+              />
+              <span>円</span>
+            </div>
             {colorEditId === p.id && (
               <div className="colorgrid inlineColorEdit">
                 {CLOTHING_COLORS.map((c) => (
@@ -1319,6 +1334,19 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
           <option value="aw">❄️秋冬</option>
         </select>
       </div>
+      <div className="preset-price-row" style={{marginLeft:0, marginTop:8}}>
+        <span>購入金額（任意）</span>
+        <input
+          type="number"
+          min="0"
+          inputMode="numeric"
+          className="finput preset-price-input"
+          placeholder="不明なら空欄"
+          value={newPrice}
+          onChange={(e) => setNewPrice(e.target.value)}
+        />
+        <span>円</span>
+      </div>
       <div className="colorgrid">
         {CLOTHING_COLORS.map((c) => (
           <button
@@ -1339,7 +1367,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   );
 }
 
-function ClothingStatsModal({ logs, onClose }) {
+function ClothingStatsModal({ logs, presets, onClose }) {
   const [period, setPeriod] = useState("all"); // week | month | specific | all
   const [type, setType] = useState("all"); // all | top | bottom | ...
   const [view, setView] = useState("list"); // list | chart
@@ -1352,6 +1380,26 @@ function ClothingStatsModal({ logs, onClose }) {
   }, [logs]);
 
   const [selectedMonth, setSelectedMonth] = useState(() => availableMonths[0] || fmtDate(new Date()).slice(0, 7));
+
+  // 単価計算用：期間・種類の絞り込みに関係なく、全ログでの累計着用回数
+  const lifetimeCount = useMemo(() => {
+    const map = {};
+    logs.forEach((l) => {
+      if (!l.name || !l.type) return;
+      const key = l.type + "|" + l.name + "|" + (l.color || "");
+      map[key] = (map[key] || 0) + 1;
+    });
+    return map;
+  }, [logs]);
+
+  // 購入金額（種類・名前・色が一致する定型文から取得。未入力・不明は null）
+  function priceOf(s) {
+    const found = (presets || []).find((p) =>
+      p.type === s.type && p.name === s.name && (p.color || "") === (s.color || "")
+      && p.price !== "" && p.price != null && !isNaN(Number(p.price))
+    );
+    return found ? Number(found.price) : null;
+  }
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -1485,6 +1533,18 @@ function ClothingStatsModal({ logs, onClose }) {
                 <span className="evtitle">
                   {s.name}
                   <span className="statstype">（{clothingTypeName(s.type)}）</span>
+                  {(() => {
+                    const price = priceOf(s);
+                    if (price === null) return null;
+                    const total = lifetimeCount[s.type + "|" + s.name + "|" + (s.color || "")] || s.count;
+                    const unit = Math.round(price / total);
+                    return (
+                      <span className="stats-unit">
+                        購入 ¥{price.toLocaleString()} ／ 単価 <b>¥{unit.toLocaleString()}</b>
+                        {total !== s.count && <>（累計{total}回）</>}
+                      </span>
+                    );
+                  })()}
                 </span>
                 <span className="statscount">{s.count}回</span>
                 <span className="statslast">最終: {fmtJpDate(parseDate(s.last), true)}</span>
@@ -2826,6 +2886,13 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .preset-price-row {
+        display: flex; align-items: center; gap: 6px;
+        margin: 2px 0 6px 28px; font-size: 11px; color: #888;
+      }
+      .preset-price-input { width: 120px; margin-top: 0; padding: 5px 8px; font-size: 13px; }
+      .stats-unit { display: block; font-size: 11px; color: #777; margin-top: 2px; font-weight: normal; }
+      .stats-unit b { color: #e65100; }
       .trip-month-header { cursor: pointer; }
       .trip-month-arrow { display: inline-block; width: 18px; font-size: 10px; color: #999; }
       .trip-month-count { font-weight: normal; font-size: 11px; color: #999; margin-left: 4px; }
