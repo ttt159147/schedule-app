@@ -138,6 +138,15 @@ function useSwipe(onSwipeLeft, onSwipeRight, threshold = 50) {
   return { onTouchStart, onTouchEnd };
 }
 
+/* 走行距離：スタート・エンドの両方が入っている時だけ計算（片方でも未入力なら0） */
+function hasOdo(l) {
+  return l && l.startOdo !== "" && l.startOdo != null && l.endOdo !== "" && l.endOdo != null;
+}
+function tripKm(l) {
+  if (!hasOdo(l)) return 0;
+  return Math.max(0, Number(l.endOdo) - Number(l.startOdo));
+}
+
 function reorderArray(arr, from, to) {
   const next = [...arr];
   const [item] = next.splice(from, 1);
@@ -1864,7 +1873,7 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
     });
   }, [logs, statPeriod]);
 
-  const totalKm = statsFiltered.reduce((s, l) => s + Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0)), 0);
+  const totalKm = statsFiltered.reduce((s, l) => s + tripKm(l), 0);
 
   const [showMonthly, setShowMonthly] = useState(false);
   const [openMonths, setOpenMonths] = useState({}); // { "2026-09": true }
@@ -1876,7 +1885,7 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
     logs.forEach((l) => {
       if (!l.date) return;
       const ym = l.date.slice(0, 7);
-      const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+      const km = tripKm(l);
       if (!map[ym]) map[ym] = { km: 0, trips: [] };
       map[ym].km += km;
       map[ym].trips.push({ ...l, km });
@@ -1933,10 +1942,16 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
                               <span className="trip-month-memo">{t.memo || ""}</span>
                             </div>
                             <div className="trip-month-bottom">
-                              <span className="trip-month-odo">
-                                {Number(t.startOdo).toLocaleString()}→{Number(t.endOdo).toLocaleString()}
-                              </span>
-                              <span className="trip-month-km">{t.km.toLocaleString()}km</span>
+                              {hasOdo(t) ? (
+                                <>
+                                  <span className="trip-month-odo">
+                                    {Number(t.startOdo).toLocaleString()}→{Number(t.endOdo).toLocaleString()}
+                                  </span>
+                                  <span className="trip-month-km">{t.km.toLocaleString()}km</span>
+                                </>
+                              ) : (
+                                <span className="trip-month-nodist">距離未入力</span>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1952,14 +1967,20 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
       <button className="car-add-btn" onClick={() => setShowModal(true)}>＋ 走行記録を追加</button>
       <div className="car-list">
         {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((l) => {
-          const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+          const km = tripKm(l);
           return (
             <div key={l.id} className="car-item" onClick={() => setEditItem(l)} style={{cursor:"pointer"}}>
               <div className="car-item-date">{fmtJpDate(parseDate(l.date), true)} {l.memo && <span className="car-item-sub">{l.memo}</span>}</div>
               <div className="car-item-row">
-                <span className="car-chip gray">{Number(l.startOdo).toLocaleString()}km →</span>
-                <span className="car-chip gray">{Number(l.endOdo).toLocaleString()}km</span>
-                <span className="car-chip blue">+{km.toLocaleString()}km</span>
+                {hasOdo(l) ? (
+                  <>
+                    <span className="car-chip gray">{Number(l.startOdo).toLocaleString()}km →</span>
+                    <span className="car-chip gray">{Number(l.endOdo).toLocaleString()}km</span>
+                    <span className="car-chip blue">+{km.toLocaleString()}km</span>
+                  </>
+                ) : (
+                  <span className="car-chip orange">距離未入力（タップで入力）</span>
+                )}
                 <button className="evdel" onClick={(e) => { e.stopPropagation(); onDel(l.id); }}>✕</button>
               </div>
             </div>
@@ -1984,11 +2005,56 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
 
 function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
   const [date, setDate]      = useState(initial?.date || fmtDate(new Date()));
-  const [startOdo, setStart] = useState(initial?.startOdo || "");
-  const [endOdo, setEnd]     = useState(initial?.endOdo || "");
+  const [startOdo, setStart] = useState(initial?.startOdo ?? "");
+  const [endOdo, setEnd]     = useState(initial?.endOdo ?? "");
   const [memo, setMemo]      = useState(initial?.memo || "");
   const isEdit = !!initial;
-  const km = startOdo && endOdo ? Math.max(0, Number(endOdo) - Number(startOdo)) : null;
+  const bothOdo = startOdo !== "" && endOdo !== "";
+  const km = bothOdo ? Math.max(0, Number(endOdo) - Number(startOdo)) : null;
+  // 距離は後から入力できる：メモ（ロケーション）か、距離（スタート・エンド両方）のどちらかがあれば保存可
+  const canSave = memo.trim() !== "" || bothOdo;
+
+  // メモ欄のカーソル位置を覚えておく（定型文をカーソル位置に挿入するため）
+  const memoRef = React.useRef(null);
+  const caretRef = React.useRef({ start: (initial?.memo || "").length, end: (initial?.memo || "").length });
+  const pendingCaretRef = React.useRef(null);
+
+  function rememberCaret() {
+    const el = memoRef.current;
+    if (!el) return;
+    caretRef.current = {
+      start: el.selectionStart ?? el.value.length,
+      end: el.selectionEnd ?? el.value.length,
+    };
+  }
+
+  // 挿入後にカーソルを挿入文字の直後へ移動
+  React.useLayoutEffect(() => {
+    if (pendingCaretRef.current === null) return;
+    const pos = pendingCaretRef.current;
+    pendingCaretRef.current = null;
+    const el = memoRef.current;
+    if (el) {
+      try { el.setSelectionRange(pos, pos); } catch { /* ignore */ }
+    }
+  }, [memo]);
+
+  function insertPreset(name) {
+    const len = memo.length;
+    const start = Math.min(caretRef.current.start, len);
+    const end = Math.min(Math.max(caretRef.current.end, start), len);
+    const before = memo.slice(0, start);
+    const after = memo.slice(end);
+    // 前後に既に「→」が無い時だけ矢印で繋ぐ
+    const needPrefix = before !== "" && !before.endsWith("→") && !name.startsWith("→");
+    const needSuffix = after !== "" && !after.startsWith("→") && !name.endsWith("→");
+    const inserted = (needPrefix ? "→" : "") + name + (needSuffix ? "→" : "");
+    const next = before + inserted + after;
+    const pos = (before + inserted).length;
+    caretRef.current = { start: pos, end: pos };
+    pendingCaretRef.current = pos;
+    setMemo(next);
+  }
 
   return (
     <Modal onClose={onCancel}>
@@ -1996,9 +2062,9 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
       <label className="flabel">日付</label>
       <input type="date" className="finput" value={date} onChange={(e) => setDate(e.target.value)} />
       <div className="dateweekdayhint">{date && fmtJpDate(parseDate(date))}</div>
-      <label className="flabel">スタート（ODO km）</label>
+      <label className="flabel">スタート（ODO km・後から入力可）</label>
       <input type="number" className="finput" value={startOdo} onChange={(e) => setStart(e.target.value)} placeholder="例：12000" min="0" />
-      <label className="flabel">エンド（ODO km）</label>
+      <label className="flabel">エンド（ODO km・後から入力可）</label>
       <input type="number" className="finput" value={endOdo} onChange={(e) => setEnd(e.target.value)} placeholder="例：12150" min="0" />
       {km !== null && <div className="car-calc-hint">走行距離：{km.toLocaleString()} km</div>}
       <label className="flabel">メモ（目的地・移動場所など）</label>
@@ -2009,11 +2075,8 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
               key={p.id}
               className="presetchip addchip"
               style={{background:"#e8f5e9",color:"#2e7d32"}}
-              onClick={() => setMemo((prev) => {
-                if (!prev) return p.name;
-                if (prev.endsWith("→") || p.name.startsWith("→")) return prev + p.name;
-                return `${prev}→${p.name}`;
-              })}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => insertPreset(p.name)}
             >
               {p.name}
             </button>
@@ -2022,18 +2085,33 @@ function TripModal({ initial, presets, onCancel, onSave, onDelete }) {
             <button
               className="presetchip"
               style={{background:"#eee",color:"#888"}}
-              onClick={() => setMemo("")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                caretRef.current = { start: 0, end: 0 };
+                setMemo("");
+              }}
             >
               クリア
             </button>
           )}
         </div>
       )}
-      <input type="text" className="finput" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：大阪→東京" />
+      <input
+        ref={memoRef}
+        type="text"
+        className="finput"
+        value={memo}
+        onChange={(e) => { setMemo(e.target.value); rememberCaret(); }}
+        onSelect={rememberCaret}
+        onKeyUp={rememberCaret}
+        onClick={rememberCaret}
+        onBlur={rememberCaret}
+        placeholder="例：大阪→東京"
+      />
       <div className="modalbtns">
         {isEdit && <button className="btn danger" onClick={onDelete}>削除</button>}
         <button className="btn ghost" onClick={onCancel}>キャンセル</button>
-        <button className="btn primary" disabled={!startOdo || !endOdo} onClick={() => onSave({ date, startOdo, endOdo, memo })}>保存</button>
+        <button className="btn primary" disabled={!canSave} onClick={() => onSave({ date, startOdo, endOdo, memo })}>保存</button>
       </div>
     </Modal>
   );
@@ -2096,7 +2174,7 @@ function CarGraphTab({ fuel, trips }) {
     trips.forEach((l) => {
       if (!l.date) return;
       const k = groupKey(l.date);
-      const km = Math.max(0, Number(l.endOdo||0) - Number(l.startOdo||0));
+      const km = tripKm(l);
       if (!map[k]) map[k] = 0;
       map[k] += km;
     });
@@ -2771,6 +2849,7 @@ function Style() {
         display: flex; justify-content: space-between; align-items: baseline;
         margin-top: 2px; padding-left: 48px;
       }
+      .trip-month-nodist { font-size: 12px; color: #e65100; }
       .trip-month-odo { font-size: 12px; color: #888; }
       .trip-month-km { font-size: 12px; color: #1565c0; font-weight: bold; }
 
