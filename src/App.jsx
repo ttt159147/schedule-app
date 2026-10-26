@@ -27,6 +27,7 @@ const LS_KEYS = {
   eventPresets: "schedule_event_presets_v1",
   clothingLogs: "schedule_clothing_logs_v1",
   clothingPresets: "schedule_clothing_presets_v1",
+  clothingYearly: "schedule_clothing_yearly_v1",
   carFuel: "schedule_car_fuel_v1",
   carTrip: "schedule_car_trip_v1",
   carMaintenance: "schedule_car_maintenance_v1",
@@ -147,6 +148,38 @@ function tripKm(l) {
   return Math.max(0, Number(l.endOdo) - Number(l.startOdo));
 }
 
+/* 服装の並び順：季節（全季節→春夏→春秋→秋冬）→ 部位（帽子→上→下→靴→バッグ）
+   同じ区分の中は元の順番を保つ（安定ソート） */
+const SEASON_ORDER = ["all", "ss", "sa", "aw"];
+const TYPE_ORDER = ["hat", "top", "bottom", "shoes", "bag"];
+function sortClothingPresets(list) {
+  const rank = (arr, v) => {
+    const i = arr.indexOf(v || "all");
+    return i === -1 ? arr.length : i;
+  };
+  return list
+    .map((p, idx) => ({ p, idx }))
+    .sort((a, b) =>
+      rank(SEASON_ORDER, a.p.season) - rank(SEASON_ORDER, b.p.season) ||
+      rank(TYPE_ORDER, a.p.type) - rank(TYPE_ORDER, b.p.type) ||
+      a.idx - b.idx
+    )
+    .map((x) => x.p);
+}
+
+/* 白に近い色のチップは白文字だと読めないので、その場合だけ濃い文字にする */
+function chipStyle(bg) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(bg || "");
+  if (m) {
+    const n = parseInt(m[1], 16);
+    const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+    if (lum > 240) {
+      return { background: bg, color: "#333", textShadow: "none", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.18)" };
+    }
+  }
+  return { background: bg };
+}
+
 function reorderArray(arr, from, to) {
   const next = [...arr];
   const [item] = next.splice(from, 1);
@@ -232,6 +265,8 @@ export default function App() {
   const [clothingPresets, setClothingPresets] = useState(() =>
     loadLS(LS_KEYS.clothingPresets, DEFAULT_CLOTHING_PRESETS)
   );
+  // 2025年以前の年間着用回数（日付なしの一括入力分）
+  const [clothingYearly, setClothingYearly] = useState(() => loadLS(LS_KEYS.clothingYearly, []));
 
   /* ---- 車データ ---- */
   const [carFuel, setCarFuel] = useState(() => loadLS(LS_KEYS.carFuel, []));
@@ -243,6 +278,7 @@ export default function App() {
   useEffect(() => saveLS(LS_KEYS.eventPresets, eventPresets), [eventPresets]);
   useEffect(() => saveLS(LS_KEYS.clothingLogs, clothingLogs), [clothingLogs]);
   useEffect(() => saveLS(LS_KEYS.clothingPresets, clothingPresets), [clothingPresets]);
+  useEffect(() => saveLS(LS_KEYS.clothingYearly, clothingYearly), [clothingYearly]);
   useEffect(() => saveLS(LS_KEYS.carFuel, carFuel), [carFuel]);
   useEffect(() => saveLS(LS_KEYS.carTrip, carTrip), [carTrip]);
   useEffect(() => saveLS(LS_KEYS.carMaintenance, carMaintenance), [carMaintenance]);
@@ -253,6 +289,7 @@ export default function App() {
     if (data.eventPresets) setEventPresets(data.eventPresets);
     if (data.clothingLogs) setClothingLogs(data.clothingLogs);
     if (data.clothingPresets) setClothingPresets(data.clothingPresets);
+    if (data.clothingYearly) setClothingYearly(data.clothingYearly);
     if (data.carFuel) setCarFuel(data.carFuel);
     if (data.carTrip) setCarTrip(data.carTrip);
     if (data.carMaintenance) setCarMaintenance(data.carMaintenance);
@@ -260,7 +297,7 @@ export default function App() {
   }
 
   const allData = {
-    events, eventPresets, clothingLogs, clothingPresets,
+    events, eventPresets, clothingLogs, clothingPresets, clothingYearly,
     carFuel, carTrip, carMaintenance, carPresets,
   };
 
@@ -309,6 +346,8 @@ export default function App() {
           setLogs={setClothingLogs}
           presets={clothingPresets}
           setPresets={setClothingPresets}
+          yearly={clothingYearly}
+          setYearly={setClothingYearly}
         />
       )}
       {tab === "car" && (
@@ -964,13 +1003,14 @@ function clothingTypeName(type) {
   return found ? found.label.replace(/^\S+\s/, "") : type;
 }
 
-function ClothingTab({ logs, setLogs, presets, setPresets }) {
+function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) {
   const [date, setDate] = useState(fmtDate(new Date()));
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showAdd, setShowAdd] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [season, setSeason] = useState("all"); // all | ss | aw
   const [showCalPicker, setShowCalPicker] = useState(false);
+  const [showYearly, setShowYearly] = useState(false);
 
   // ドラッグ状態（セクション間移動用）
   const [dragging, setDragging] = useState(null); // { id, name, color, fromType }
@@ -1040,6 +1080,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
       <div className="toprow-actions">
         <button className="btn ghost small" onClick={() => setShowPresetManager(true)}>⚙️ 項目管理</button>
         <button className="btn ghost small" onClick={() => setShowStats(true)}>📊 集計を見る</button>
+        <button className="btn ghost small" onClick={() => setShowYearly(true)}>📆 過去分入力</button>
       </div>
 
       {dragging && (
@@ -1083,7 +1124,16 @@ function ClothingTab({ logs, setLogs, presets, setPresets }) {
       )}
 
       {showStats && (
-        <ClothingStatsModal logs={logs} presets={presets} onClose={() => setShowStats(false)} />
+        <ClothingStatsModal logs={logs} presets={presets} yearly={yearly} onClose={() => setShowStats(false)} />
+      )}
+
+      {showYearly && (
+        <ClothingYearlyModal
+          presets={presets}
+          yearly={yearly}
+          setYearly={setYearly}
+          onClose={() => setShowYearly(false)}
+        />
       )}
 
       {showCalPicker && (
@@ -1142,7 +1192,7 @@ function ClothingSection({ label, type, items, presets, onQuickAdd, onAddCustom,
           <button
             key={p.id}
             className="presetchip"
-            style={{ background: p.color }}
+            style={chipStyle(p.color)}
             onClick={() => onQuickAdd(p)}
           >
             {p.name}
@@ -1194,7 +1244,7 @@ function ClothingAddModal({ type, onCancel, onSave }) {
 }
 
 function ClothingPresetManagerModal({ presets, onClose, onSave }) {
-  const [list, setList] = useState(presets);
+  const [list, setList] = useState(() => sortClothingPresets(presets));
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("top");
   const [newSeason, setNewSeason] = useState("all");
@@ -1207,11 +1257,23 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
     onSave(next);
   }
 
+  // 開いた時に並びが変わる場合は、保存データも同じ並びにそろえる
+  useEffect(() => {
+    const sorted = sortClothingPresets(presets);
+    if (sorted.some((p, i) => p !== presets[i])) onSave(sorted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 並べ替えを伴う更新（追加・種類/季節の変更）用
+  function commitSorted(next) {
+    commit(sortClothingPresets(next));
+  }
+
   const { itemRefs, draggingIndex, startDrag } = useDragReorder(list, commit);
 
   function addItem() {
     if (!newName.trim()) return;
-    commit([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor, season: newSeason, price: newPrice }]);
+    commitSorted([...list, { id: uid(), name: newName.trim(), type: newType, color: newColor, season: newSeason, price: newPrice }]);
     setNewName("");
     setNewPrice("");
   }
@@ -1254,7 +1316,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               <select
                 className="finput inline select"
                 value={p.type}
-                onChange={(e) => updateItem(p.id, { type: e.target.value })}
+                onChange={(e) => commitSorted(list.map((x) => (x.id === p.id ? { ...x, type: e.target.value } : x)))}
               >
                 <option value="top">上</option>
                 <option value="bottom">下</option>
@@ -1265,7 +1327,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               <select
                 className="finput inline select"
                 value={p.season || "all"}
-                onChange={(e) => updateItem(p.id, { season: e.target.value })}
+                onChange={(e) => commitSorted(list.map((x) => (x.id === p.id ? { ...x, season: e.target.value } : x)))}
               >
                 <option value="all">全季節</option>
                 <option value="ss">☀️春夏</option>
@@ -1367,7 +1429,176 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   );
 }
 
-function ClothingStatsModal({ logs, presets, onClose }) {
+/* 2025年以前の着用回数を、年ごとに一括入力するモーダル */
+const YEARLY_MAX_YEAR = 2025;
+
+function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
+  const years = Array.from({ length: 16 }, (_, i) => YEARLY_MAX_YEAR - i); // 2025〜2010
+  const [year, setYear] = useState(YEARLY_MAX_YEAR);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [selected, setSelected] = useState(null); // { type, name, color }
+  const [count, setCount] = useState("");
+  const [custom, setCustom] = useState(false);
+  const [cName, setCName] = useState("");
+  const [cType, setCType] = useState("top");
+  const [cColor, setCColor] = useState(CLOTHING_COLORS[0]);
+
+  const sameItem = (a, b) => a.type === b.type && a.name === b.name && (a.color || "") === (b.color || "");
+
+  const yearEntries = useMemo(
+    () => yearly.filter((y) => y.year === year).sort((a, b) => b.count - a.count),
+    [yearly, year]
+  );
+  const yearTotal = yearEntries.reduce((s, y) => s + y.count, 0);
+
+  const target = custom
+    ? (cName.trim() ? { type: cType, name: cName.trim(), color: cColor } : null)
+    : selected;
+  const n = Math.round(Number(count));
+  const canSave = !!target && Number.isFinite(n) && n >= 1;
+  const exists = target && yearEntries.some((y) => sameItem(y, target));
+
+  function save() {
+    if (!canSave) return;
+    setYearly((prev) => {
+      const idx = prev.findIndex((y) => y.year === year && sameItem(y, target));
+      if (idx >= 0) {
+        // 同じ年・同じ服は上書き（二重に足されないように）
+        return prev.map((y, i) => (i === idx ? { ...y, count: n } : y));
+      }
+      return [...prev, { id: uid(), year, type: target.type, name: target.name, color: target.color, count: n }];
+    });
+    setCount("");
+    setSelected(null);
+    setCName("");
+  }
+
+  function pickEntry(y) {
+    setCustom(false);
+    setSelected({ type: y.type, name: y.name, color: y.color });
+    setCount(String(y.count));
+  }
+
+  function removeEntry(id) {
+    setYearly((prev) => prev.filter((y) => y.id !== id));
+  }
+
+  const visiblePresets = presets.filter((p) => typeFilter === "all" || p.type === typeFilter);
+
+  return (
+    <Modal onClose={onClose}>
+      <h3>📆 過去分の入力（年間の回数）</h3>
+      <div className="car-calc-hint" style={{textAlign:"left"}}>
+        {YEARLY_MAX_YEAR}年以前の着用回数を、年ごとにまとめて入力します。集計の「全期間」「トータル」に合算されます。
+        {YEARLY_MAX_YEAR + 1}年以降は日付ごとに入力してください。
+      </div>
+
+      <label className="flabel">年</label>
+      <select className="finput" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+        {years.map((y) => <option key={y} value={y}>{y}年</option>)}
+      </select>
+
+      <label className="flabel">服を選ぶ</label>
+      <div className="viewswitch small" style={{margin:"6px 0"}}>
+        {[["all","全部"],["hat","帽子"],["top","上"],["bottom","下"],["shoes","靴"],["bag","バッグ"]].map(([v,l]) => (
+          <button key={v} className={typeFilter===v?"vbtn active":"vbtn"} onClick={() => setTypeFilter(v)}>{l}</button>
+        ))}
+      </div>
+      <div className="presetrow" style={{marginBottom:6}}>
+        {visiblePresets.map((pr) => {
+          const isSel = !custom && selected && sameItem(selected, pr);
+          return (
+            <button
+              key={pr.id}
+              className={"presetchip" + (isSel ? " chip-selected" : "")}
+              style={chipStyle(pr.color)}
+              onClick={() => { setCustom(false); setSelected({ type: pr.type, name: pr.name, color: pr.color }); }}
+            >
+              {pr.name}
+            </button>
+          );
+        })}
+        <button
+          className={"presetchip addchip" + (custom ? " chip-selected" : "")}
+          onClick={() => setCustom((v) => !v)}
+        >
+          ＋ 一覧にない服
+        </button>
+      </div>
+
+      {custom && (
+        <div className="yearly-custom">
+          <input className="finput" placeholder="服の名前" value={cName} onChange={(e) => setCName(e.target.value)} />
+          <select className="finput" style={{marginTop:6}} value={cType} onChange={(e) => setCType(e.target.value)}>
+            <option value="hat">帽子</option>
+            <option value="top">上</option>
+            <option value="bottom">下</option>
+            <option value="shoes">靴</option>
+            <option value="bag">バッグ</option>
+          </select>
+          <div className="colorgrid">
+            {CLOTHING_COLORS.map((c) => (
+              <button
+                key={c}
+                className={"colorswatch" + (c === cColor ? " selected" : "")}
+                style={{ background: c }}
+                onClick={() => setCColor(c)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {target && (
+        <div className="yearly-selected">
+          <span className="evcolor" style={{ background: target.color }} />
+          <span>{target.name}（{clothingTypeName(target.type)}）</span>
+        </div>
+      )}
+
+      <label className="flabel">{year}年の着用回数</label>
+      <input
+        type="number"
+        min="1"
+        inputMode="numeric"
+        className="finput"
+        placeholder="例：30"
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+      />
+      <button className="btn primary" style={{width:"100%", marginTop:10}} disabled={!canSave} onClick={save}>
+        {exists ? "この年の回数を更新" : "この年に追加"}
+      </button>
+
+      <div className="daypanel-title" style={{marginTop:18}}>
+        {year}年の入力済み{yearEntries.length > 0 && `（合計${yearTotal.toLocaleString()}回）`}
+      </div>
+      {yearEntries.length === 0 && <div className="empty">この年の入力はまだありません</div>}
+      <div className="statslist">
+        {yearEntries.map((y) => (
+          <div key={y.id} className="statsitem" style={{cursor:"pointer"}} onClick={() => pickEntry(y)}>
+            <span className="evcolor" style={{ background: y.color }} />
+            <span className="evtitle">
+              {y.name}
+              <span className="statstype">（{clothingTypeName(y.type)}）</span>
+            </span>
+            <span className="statscount">{y.count}回</span>
+            <button className="evdel" onClick={(e) => { e.stopPropagation(); removeEntry(y.id); }}>✕</button>
+          </div>
+        ))}
+      </div>
+      {yearEntries.length > 0 && (
+        <div className="empty" style={{padding:"6px 0", fontSize:11}}>行をタップすると回数を修正できます</div>
+      )}
+
+      <div className="modalbtns">
+        <button className="btn ghost" onClick={onClose}>閉じる</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ClothingStatsModal({ logs, presets, yearly, onClose }) {
   const [period, setPeriod] = useState("all"); // week | month | specific | all
   const [type, setType] = useState("all"); // all | top | bottom | ...
   const [view, setView] = useState("list"); // list | chart
@@ -1389,8 +1620,13 @@ function ClothingStatsModal({ logs, presets, onClose }) {
       const key = l.type + "|" + l.name + "|" + (l.color || "");
       map[key] = (map[key] || 0) + 1;
     });
+    (yearly || []).forEach((y) => {
+      if (!y.name || !y.type) return;
+      const key = y.type + "|" + y.name + "|" + (y.color || "");
+      map[key] = (map[key] || 0) + (Number(y.count) || 0);
+    });
     return map;
-  }, [logs]);
+  }, [logs, yearly]);
 
   // 購入金額（種類・名前・色が一致する定型文から取得。未入力・不明は null）
   function priceOf(s) {
@@ -1435,8 +1671,24 @@ function ClothingStatsModal({ logs, presets, onClose }) {
       if (l.date > map[key].last) map[key].last = l.date;
     });
 
+    // 過去分（年間の一括入力）は「全期間」のときだけ合算
+    if (period === "all") {
+      (yearly || []).forEach((y) => {
+        if (!y.name || !y.type) return;
+        if (type !== "all" && y.type !== type) return;
+        const key = y.type + "|" + y.name + "|" + (y.color || "");
+        if (!map[key]) {
+          map[key] = { name: y.name, type: y.type, color: y.color, count: 0, last: null };
+        }
+        const c = Number(y.count) || 0;
+        map[key].count += c;
+        map[key].yearCount = (map[key].yearCount || 0) + c;
+        map[key].lastYear = Math.max(map[key].lastYear || 0, y.year);
+      });
+    }
+
     return Object.values(map).sort((a, b) => b.count - a.count);
-  }, [logs, period, type, selectedMonth]);
+  }, [logs, yearly, period, type, selectedMonth]);
 
   // 円グラフ用：月別 or トータルの切り替え
   const [chartPeriod, setChartPeriod] = useState("month"); // month | all
@@ -1457,10 +1709,19 @@ function ClothingStatsModal({ logs, presets, onClose }) {
       if (!map[key]) map[key] = { name: l.name, color: l.color, value: 0 };
       map[key].value += 1;
     });
+    if (chartPeriod === "all") {
+      (yearly || []).forEach((y) => {
+        if (!y.name || !y.type) return;
+        if (type !== "all" && y.type !== type) return;
+        const key = y.type + "|" + y.name + "|" + (y.color || "");
+        if (!map[key]) map[key] = { name: y.name, color: y.color, value: 0 };
+        map[key].value += Number(y.count) || 0;
+      });
+    }
     const sorted = Object.values(map).sort((a, b) => b.value - a.value);
     // トップ10のみ表示（棒グラフなので項目数が多くても見やすい）
     return sorted.slice(0, 10);
-  }, [logs, type, chartPeriod]);
+  }, [logs, yearly, type, chartPeriod]);
 
   return (
     <Modal onClose={onClose}>
@@ -1533,6 +1794,9 @@ function ClothingStatsModal({ logs, presets, onClose }) {
                 <span className="evtitle">
                   {s.name}
                   <span className="statstype">（{clothingTypeName(s.type)}）</span>
+                  {s.yearCount > 0 && (
+                    <span className="stats-unit">過去分（〜{YEARLY_MAX_YEAR}年）{s.yearCount}回を含む</span>
+                  )}
                   {(() => {
                     const price = priceOf(s);
                     if (price === null) return null;
@@ -1547,7 +1811,9 @@ function ClothingStatsModal({ logs, presets, onClose }) {
                   })()}
                 </span>
                 <span className="statscount">{s.count}回</span>
-                <span className="statslast">最終: {fmtJpDate(parseDate(s.last), true)}</span>
+                <span className="statslast">
+                  最終: {s.last ? fmtJpDate(parseDate(s.last), true) : (s.lastYear ? `${s.lastYear}年` : "—")}
+                </span>
               </div>
             ))}
           </div>
@@ -2702,7 +2968,7 @@ function BackupModal({ data, onRestore, onClose }) {
   }
 
   const totalCount =
-    (data.events?.length || 0) + (data.clothingLogs?.length || 0) +
+    (data.events?.length || 0) + (data.clothingLogs?.length || 0) + (data.clothingYearly?.length || 0) +
     (data.carFuel?.length || 0) + (data.carTrip?.length || 0) + (data.carMaintenance?.length || 0);
 
   return (
@@ -2886,6 +3152,13 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .chip-selected { outline: 3px solid #4fc3f7; outline-offset: 1px; }
+      .yearly-custom { background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+      .yearly-selected {
+        display: flex; align-items: center; gap: 8px;
+        background: #e3f6fd; border-radius: 8px; padding: 8px 10px;
+        font-size: 13px; margin-top: 8px;
+      }
       .preset-price-row {
         display: flex; align-items: center; gap: 6px;
         margin: 2px 0 6px 28px; font-size: 11px; color: #888;
