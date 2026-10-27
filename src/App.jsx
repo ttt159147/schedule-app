@@ -180,6 +180,28 @@ function chipStyle(bg) {
   return { background: bg };
 }
 
+/* 定型文の名前・部位・色を変えたとき、その定型文に結び付く記録（日々の着用ログ・過去分）も同じ内容に書き換える。
+   結び付きは presetId で判断する。
+   presetId がまだ無い古い記録は、変更前の「部位・名前・色」が一致するものを同じ服として結び付ける。
+   変更が無ければ元の配列をそのまま返す（無駄な保存を避けるため）。 */
+function relinkRecords(arr, presetId, oldKey, rec) {
+  let changed = false;
+  const next = arr.map((r) => {
+    const linked = r.presetId === presetId;
+    const legacy =
+      !r.presetId &&
+      r.type === oldKey.type &&
+      r.name === oldKey.name &&
+      (r.color || "") === (oldKey.color || "");
+    if (!linked && !legacy) return r;
+    const diff = r.presetId !== presetId || Object.keys(rec).some((k) => r[k] !== rec[k]);
+    if (!diff) return r;
+    changed = true;
+    return { ...r, ...rec, presetId };
+  });
+  return changed ? next : arr;
+}
+
 function reorderArray(arr, from, to) {
   const next = [...arr];
   const [item] = next.splice(from, 1);
@@ -1023,8 +1045,14 @@ function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) 
     return presets.filter((p) => !p.season || p.season === "all" || p.season === season);
   }, [presets, season]);
 
-  function addLog(type, name, color) {
-    setLogs((prev) => [...prev, { id: uid(), date, type, name, color }]);
+  // 項目管理で定型文を変更したとき、結び付く記録（日々のログ・過去分）にも反映する
+  function syncPresetToRecords(presetId, oldKey, rec) {
+    setLogs((prev) => relinkRecords(prev, presetId, oldKey, rec));
+    setYearly((prev) => relinkRecords(prev, presetId, oldKey, rec));
+  }
+
+  function addLog(type, name, color, presetId) {
+    setLogs((prev) => [...prev, { id: uid(), date, type, name, color, ...(presetId ? { presetId } : {}) }]);
   }
   function deleteLog(id) {
     setLogs((prev) => prev.filter((l) => l.id !== id));
@@ -1094,7 +1122,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) 
           type={type}
           items={dayLogs.filter((l) => l.type === type)}
           presets={visiblePresets.filter((p) => p.type === type)}
-          onQuickAdd={(p) => addLog(type, p.name, p.color)}
+          onQuickAdd={(p) => addLog(type, p.name, p.color, p.id)}
           onAddCustom={() => setShowAdd(type)}
           onDelete={deleteLog}
           dragging={dragging}
@@ -1120,6 +1148,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) 
           presets={presets}
           onClose={() => setShowPresetManager(false)}
           onSave={setPresets}
+          onSyncRecords={syncPresetToRecords}
         />
       )}
 
@@ -1243,7 +1272,7 @@ function ClothingAddModal({ type, onCancel, onSave }) {
   );
 }
 
-function ClothingPresetManagerModal({ presets, onClose, onSave }) {
+function ClothingPresetManagerModal({ presets, onClose, onSave, onSyncRecords }) {
   const [list, setList] = useState(() => sortClothingPresets(presets));
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("top");
@@ -1280,8 +1309,23 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
   function removeItem(id) {
     commit(list.filter((p) => p.id !== id));
   }
+  // 名前・部位・色の変更を、結び付く記録にも反映する（金額・季節は記録に持たないので対象外）
+  function syncRecords(id, patch) {
+    const cur = list.find((x) => x.id === id);
+    if (!cur || !onSyncRecords) return;
+    const rec = {};
+    // 名前が空の途中状態では、記録側の名前は消さずに結び付けだけ行う
+    if (patch.name !== undefined && patch.name.trim() !== "") rec.name = patch.name;
+    if (patch.type !== undefined) rec.type = patch.type;
+    if (patch.color !== undefined) rec.color = patch.color;
+    onSyncRecords(id, { type: cur.type, name: cur.name, color: cur.color }, rec);
+  }
+
   function updateItem(id, patch) {
     commit(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    if (patch.name !== undefined || patch.type !== undefined || patch.color !== undefined) {
+      syncRecords(id, patch);
+    }
   }
 
   return (
@@ -1316,7 +1360,10 @@ function ClothingPresetManagerModal({ presets, onClose, onSave }) {
               <select
                 className="finput inline select"
                 value={p.type}
-                onChange={(e) => commitSorted(list.map((x) => (x.id === p.id ? { ...x, type: e.target.value } : x)))}
+                onChange={(e) => {
+                  syncRecords(p.id, { type: e.target.value });
+                  commitSorted(list.map((x) => (x.id === p.id ? { ...x, type: e.target.value } : x)));
+                }}
               >
                 <option value="top">上</option>
                 <option value="bottom">下</option>
@@ -1464,9 +1511,9 @@ function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
       const idx = prev.findIndex((y) => y.year === year && sameItem(y, target));
       if (idx >= 0) {
         // 同じ年・同じ服は上書き（二重に足されないように）
-        return prev.map((y, i) => (i === idx ? { ...y, count: n } : y));
+        return prev.map((y, i) => (i === idx ? { ...y, count: n, ...(!y.presetId && target.presetId ? { presetId: target.presetId } : {}) } : y));
       }
-      return [...prev, { id: uid(), year, type: target.type, name: target.name, color: target.color, count: n }];
+      return [...prev, { id: uid(), year, type: target.type, name: target.name, color: target.color, count: n, ...(target.presetId ? { presetId: target.presetId } : {}) }];
     });
     setCount("");
     setSelected(null);
@@ -1475,7 +1522,7 @@ function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
 
   function pickEntry(y) {
     setCustom(false);
-    setSelected({ type: y.type, name: y.name, color: y.color });
+    setSelected({ type: y.type, name: y.name, color: y.color, presetId: y.presetId });
     setCount(String(y.count));
   }
 
@@ -1512,7 +1559,7 @@ function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
               key={pr.id}
               className={"presetchip" + (isSel ? " chip-selected" : "")}
               style={chipStyle(pr.color)}
-              onClick={() => { setCustom(false); setSelected({ type: pr.type, name: pr.name, color: pr.color }); }}
+              onClick={() => { setCustom(false); setSelected({ type: pr.type, name: pr.name, color: pr.color, presetId: pr.id }); }}
             >
               {pr.name}
             </button>
