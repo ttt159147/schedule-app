@@ -150,7 +150,13 @@ function tripKm(l) {
 
 /* 服装の並び順：季節（全季節→春夏→春秋→秋冬）→ 部位（帽子→上→下→靴→バッグ）
    同じ区分の中は元の順番を保つ（安定ソート） */
-const SEASON_ORDER = ["all", "ss", "sa", "aw"];
+const SEASONS = [
+  { key: "ss", label: "春夏", emoji: "☀️" },
+  { key: "sa", label: "春秋", emoji: "🍂" },
+  { key: "aw", label: "秋冬", emoji: "❄️" },
+  { key: "w",  label: "冬",   emoji: "⛄" },
+];
+const SEASON_ORDER = ["all", ...SEASONS.map((x) => x.key)];
 const TYPE_ORDER = ["hat", "top", "bottom", "shoes", "bag"];
 function sortClothingPresets(list) {
   const rank = (arr, v) => {
@@ -328,7 +334,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.08.06c</span></h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28a</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
@@ -1100,7 +1106,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) 
       </div>
 
       <div className="viewswitch small" style={{marginBottom: 10}}>
-        {[["all","全季節"],["ss","☀️ 春夏"],["sa","🍂 春秋"],["aw","❄️ 秋冬"]].map(([v,l]) => (
+        {[["all","全季節"], ...SEASONS.map((x) => [x.key, `${x.emoji} ${x.label}`])].map(([v,l]) => (
           <button key={v} className={season===v?"vbtn active":"vbtn"} onClick={() => setSeason(v)}>{l}</button>
         ))}
       </div>
@@ -1354,9 +1360,9 @@ function ClothingPresetManagerModal({ presets, onClose, onSave, onSyncRecords })
                 value={p.name}
                 onChange={(e) => updateItem(p.id, { name: e.target.value })}
               />
-              {p.season === "ss" && <span style={{fontSize:14}}>☀️</span>}
-              {p.season === "sa" && <span style={{fontSize:14}}>🍂</span>}
-              {p.season === "aw" && <span style={{fontSize:14}}>❄️</span>}
+              {p.season && p.season !== "all" && (
+                <span style={{fontSize:14}}>{(SEASONS.find((x) => x.key === p.season) || {}).emoji}</span>
+              )}
               <select
                 className="finput inline select"
                 value={p.type}
@@ -1377,9 +1383,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave, onSyncRecords })
                 onChange={(e) => commitSorted(list.map((x) => (x.id === p.id ? { ...x, season: e.target.value } : x)))}
               >
                 <option value="all">全季節</option>
-                <option value="ss">☀️春夏</option>
-                <option value="sa">🍂春秋</option>
-                <option value="aw">❄️秋冬</option>
+                {SEASONS.map((x) => <option key={x.key} value={x.key}>{x.emoji}{x.label}</option>)}
               </select>
               <button className="evdel" onClick={() => removeItem(p.id)}>✕</button>
             </div>
@@ -1438,9 +1442,7 @@ function ClothingPresetManagerModal({ presets, onClose, onSave, onSyncRecords })
           onChange={(e) => setNewSeason(e.target.value)}
         >
           <option value="all">全季節</option>
-          <option value="ss">☀️春夏</option>
-          <option value="sa">🍂春秋</option>
-          <option value="aw">❄️秋冬</option>
+          {SEASONS.map((x) => <option key={x.key} value={x.key}>{x.emoji}{x.label}</option>)}
         </select>
       </div>
       <div className="preset-price-row" style={{marginLeft:0, marginTop:8}}>
@@ -1675,6 +1677,30 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
     return map;
   }, [logs, yearly]);
 
+  // 年別の回数（項目をタップして表示）。日付つきの記録は日付の年、過去分は入力した年で数える
+  const yearCounts = useMemo(() => {
+    const map = {};
+    const add = (key, year, n) => {
+      if (!year || !n) return;
+      if (!map[key]) map[key] = {};
+      map[key][year] = (map[key][year] || 0) + n;
+    };
+    logs.forEach((l) => {
+      if (!l.name || !l.type || !l.date) return;
+      add(l.type + "|" + l.name + "|" + (l.color || ""), Number(l.date.slice(0, 4)), 1);
+    });
+    (yearly || []).forEach((y) => {
+      if (!y.name || !y.type) return;
+      add(y.type + "|" + y.name + "|" + (y.color || ""), Number(y.year), Number(y.count) || 0);
+    });
+    return map;
+  }, [logs, yearly]);
+
+  const [openItems, setOpenItems] = useState({});
+  function toggleOpen(key) {
+    setOpenItems((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   // 購入金額（種類・名前・色が一致する定型文から取得。未入力・不明は null）
   function priceOf(s) {
     const found = (presets || []).find((p) =>
@@ -1835,8 +1861,17 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
 
           {stats.length === 0 && <div className="empty">記録がありません</div>}
           <div className="statslist">
-            {stats.map((s) => (
-              <div key={s.type + s.name + s.color} className="statsitem">
+            {stats.map((s) => {
+              const itemKey = s.type + "|" + s.name + "|" + (s.color || "");
+              const years = yearCounts[itemKey] || {};
+              const yearList = Object.keys(years).map(Number).sort((a, b) => a - b);
+              const yearMax = Math.max(1, ...yearList.map((y) => years[y]));
+              const yearTotal = yearList.reduce((sum, y) => sum + years[y], 0);
+              const isOpen = !!openItems[itemKey];
+              return (
+              <div key={itemKey} className="statsitem-wrap">
+              <div className="statsitem statsitem-tap" onClick={() => toggleOpen(itemKey)}>
+                <span className="stats-arrow">{isOpen ? "▼" : "▶"}</span>
                 <span className="evcolor" style={{ background: s.color }} />
                 <span className="evtitle">
                   {s.name}
@@ -1862,7 +1897,23 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
                   最終: {s.last ? fmtJpDate(parseDate(s.last), true) : (s.lastYear ? `${s.lastYear}年` : "—")}
                 </span>
               </div>
-            ))}
+              {isOpen && (
+                <div className="stats-years">
+                  <div className="stats-years-title">年別の回数（全期間）</div>
+                  {yearList.length === 0 && <div className="empty" style={{padding:"4px 0"}}>年別のデータがありません</div>}
+                  {yearList.map((y) => (
+                    <div key={y} className="stats-year-row">
+                      <span className="stats-year-label">{y}年</span>
+                      <span className="stats-year-bar"><i style={{ width: `${(years[y] / yearMax) * 100}%`, background: s.color || "#4fc3f7" }} /></span>
+                      <b className="stats-year-count">{years[y]}回</b>
+                    </div>
+                  ))}
+                  {yearList.length > 0 && <div className="stats-year-total">合計 {yearTotal}回</div>}
+                </div>
+              )}
+              </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -3199,6 +3250,19 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .statsitem-tap { cursor: pointer; }
+      .stats-arrow { font-size: 9px; color: #aaa; width: 10px; flex-shrink: 0; }
+      .stats-years {
+        background: #fff; border: 1px solid #eee; border-radius: 8px;
+        margin: 2px 0 2px 14px; padding: 8px 10px;
+      }
+      .stats-years-title { font-size: 11px; color: #999; margin-bottom: 6px; }
+      .stats-year-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+      .stats-year-label { width: 46px; color: #555; flex-shrink: 0; }
+      .stats-year-bar { flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+      .stats-year-bar i { display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+      .stats-year-count { width: 52px; text-align: right; color: #1565c0; flex-shrink: 0; }
+      .stats-year-total { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #eee; font-size: 12px; color: #555; text-align: right; font-weight: bold; }
       .chip-selected { outline: 3px solid #4fc3f7; outline-offset: 1px; }
       .yearly-custom { background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
       .yearly-selected {
