@@ -1159,7 +1159,7 @@ function ClothingTab({ logs, setLogs, presets, setPresets, yearly, setYearly }) 
       )}
 
       {showStats && (
-        <ClothingStatsModal logs={logs} presets={presets} yearly={yearly} onClose={() => setShowStats(false)} />
+        <ClothingStatsModal logs={logs} presets={presets} yearly={yearly} setYearly={setYearly} onClose={() => setShowStats(false)} />
       )}
 
       {showYearly && (
@@ -1647,7 +1647,7 @@ function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
   );
 }
 
-function ClothingStatsModal({ logs, presets, yearly, onClose }) {
+function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
   const [period, setPeriod] = useState("all"); // week | month | specific | all
   const [type, setType] = useState("all"); // all | top | bottom | ...
   const [view, setView] = useState("list"); // list | chart
@@ -1678,20 +1678,22 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
   }, [logs, yearly]);
 
   // 年別の回数（項目をタップして表示）。日付つきの記録は日付の年、過去分は入力した年で数える
-  const yearCounts = useMemo(() => {
+  // dated = 日付つきの記録の回数、bulk = 過去分入力（年間の一括）の回数
+  const yearParts = useMemo(() => {
     const map = {};
-    const add = (key, year, n) => {
+    const add = (key, year, field, n) => {
       if (!year || !n) return;
       if (!map[key]) map[key] = {};
-      map[key][year] = (map[key][year] || 0) + n;
+      if (!map[key][year]) map[key][year] = { dated: 0, bulk: 0 };
+      map[key][year][field] += n;
     };
     logs.forEach((l) => {
       if (!l.name || !l.type || !l.date) return;
-      add(l.type + "|" + l.name + "|" + (l.color || ""), Number(l.date.slice(0, 4)), 1);
+      add(l.type + "|" + l.name + "|" + (l.color || ""), Number(l.date.slice(0, 4)), "dated", 1);
     });
     (yearly || []).forEach((y) => {
       if (!y.name || !y.type) return;
-      add(y.type + "|" + y.name + "|" + (y.color || ""), Number(y.year), Number(y.count) || 0);
+      add(y.type + "|" + y.name + "|" + (y.color || ""), Number(y.year), "bulk", Number(y.count) || 0);
     });
     return map;
   }, [logs, yearly]);
@@ -1699,6 +1701,42 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
   const [openItems, setOpenItems] = useState({});
   function toggleOpen(key) {
     setOpenItems((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  // 年ごとの回数の編集（編集中の年と入力値）
+  const [editYear, setEditYear] = useState(null); // { key, year }
+  const [editVal, setEditVal] = useState("");
+
+  // 合計が desiredTotal になるように、一括入力の分を調整する。
+  // 日付つきの記録はここでは増減できないので、それより少ない回数にはできない。
+  function saveYearCount(item, year, desiredTotal) {
+    const k = item.type + "|" + item.name + "|" + (item.color || "");
+    const dated = (yearParts[k] && yearParts[k][year] && yearParts[k][year].dated) || 0;
+    const bulk = desiredTotal - dated;
+    if (!Number.isFinite(bulk) || bulk < 0) return false;
+    const keyOf = (r) => r.type + "|" + r.name + "|" + (r.color || "");
+    // 新しく一括入力を作る場合に、同じ服の presetId を引き継ぐ
+    const pid =
+      (logs.find((l) => keyOf(l) === k && l.presetId) || {}).presetId ||
+      ((yearly || []).find((y) => keyOf(y) === k && y.presetId) || {}).presetId ||
+      ((presets || []).find((pr) => keyOf(pr) === k) || {}).id;
+    setYearly((prev) => {
+      const isMatch = (y) => Number(y.year) === year && keyOf(y) === k;
+      if (!prev.some(isMatch)) {
+        if (bulk === 0) return prev;
+        return [...prev, { id: uid(), year, type: item.type, name: item.name, color: item.color, count: bulk, ...(pid ? { presetId: pid } : {}) }];
+      }
+      if (bulk === 0) return prev.filter((y) => !isMatch(y));
+      // 最初の1件を更新し、同じ年の重複があれば1件にまとめる
+      let kept = false;
+      const next = [];
+      prev.forEach((y) => {
+        if (!isMatch(y)) { next.push(y); return; }
+        if (!kept) { kept = true; next.push({ ...y, count: bulk }); }
+      });
+      return next;
+    });
+    return true;
   }
 
   // 購入金額（種類・名前・色が一致する定型文から取得。未入力・不明は null）
@@ -1863,10 +1901,11 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
           <div className="statslist">
             {stats.map((s) => {
               const itemKey = s.type + "|" + s.name + "|" + (s.color || "");
-              const years = yearCounts[itemKey] || {};
+              const years = yearParts[itemKey] || {};
               const yearList = Object.keys(years).map(Number).sort((a, b) => a - b);
-              const yearMax = Math.max(1, ...yearList.map((y) => years[y]));
-              const yearTotal = yearList.reduce((sum, y) => sum + years[y], 0);
+              const totalOf = (y) => years[y].dated + years[y].bulk;
+              const yearMax = Math.max(1, ...yearList.map(totalOf));
+              const yearTotal = yearList.reduce((sum, y) => sum + totalOf(y), 0);
               const isOpen = !!openItems[itemKey];
               return (
               <div key={itemKey} className="statsitem-wrap">
@@ -1901,13 +1940,64 @@ function ClothingStatsModal({ logs, presets, yearly, onClose }) {
                 <div className="stats-years">
                   <div className="stats-years-title">年別の回数（全期間）</div>
                   {yearList.length === 0 && <div className="empty" style={{padding:"4px 0"}}>年別のデータがありません</div>}
-                  {yearList.map((y) => (
-                    <div key={y} className="stats-year-row">
-                      <span className="stats-year-label">{y}年</span>
-                      <span className="stats-year-bar"><i style={{ width: `${(years[y] / yearMax) * 100}%`, background: s.color || "#4fc3f7" }} /></span>
-                      <b className="stats-year-count">{years[y]}回</b>
-                    </div>
-                  ))}
+                  {yearList.map((y) => {
+                    const part = years[y];
+                    const total = totalOf(y);
+                    const editing = editYear && editYear.key === itemKey && editYear.year === y;
+                    const n = Math.round(Number(editVal));
+                    const valid = editVal !== "" && Number.isFinite(n) && n >= part.dated;
+                    if (editing) {
+                      return (
+                        <div key={y} className="stats-year-edit-box">
+                          <div className="stats-year-row">
+                            <span className="stats-year-label">{y}年</span>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={part.dated}
+                              className="finput stats-year-input"
+                              value={editVal}
+                              autoFocus
+                              onChange={(e) => setEditVal(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && valid && saveYearCount(s, y, n)) setEditYear(null);
+                              }}
+                            />
+                            <span style={{fontSize:12, color:"#888"}}>回</span>
+                            <button
+                              className="btn primary stats-year-btn"
+                              disabled={!valid}
+                              onClick={() => { if (saveYearCount(s, y, n)) setEditYear(null); }}
+                            >保存</button>
+                            <button className="evdel" onClick={() => setEditYear(null)}>✕</button>
+                          </div>
+                          {part.dated > 0 && (
+                            <div className={"stats-year-hint" + (valid || editVal === "" ? "" : " ng")}>
+                              日付つきの記録が{part.dated}回あるため、{part.dated}回より少なくはできません
+                              {part.bulk > 0 ? `（一括入力は現在${part.bulk}回）` : ""}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={y} className="stats-year-wrap">
+                        <div className="stats-year-row">
+                          <span className="stats-year-label">{y}年</span>
+                          <span className="stats-year-bar"><i style={{ width: `${(total / yearMax) * 100}%`, background: s.color || "#4fc3f7" }} /></span>
+                          <b className="stats-year-count">{total}回</b>
+                          <button
+                            className="stats-year-edit"
+                            title="この年の回数を編集"
+                            onClick={() => { setEditYear({ key: itemKey, year: y }); setEditVal(String(total)); }}
+                          >✎</button>
+                        </div>
+                        {part.dated > 0 && part.bulk > 0 && (
+                          <div className="stats-year-parts">日付つき {part.dated}回 ＋ 一括入力 {part.bulk}回</div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {yearList.length > 0 && <div className="stats-year-total">合計 {yearTotal}回</div>}
                 </div>
               )}
@@ -3262,6 +3352,16 @@ function Style() {
       .stats-year-bar { flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
       .stats-year-bar i { display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
       .stats-year-count { width: 52px; text-align: right; color: #1565c0; flex-shrink: 0; }
+      .stats-year-edit {
+        border: none; background: #f0f0f0; color: #666; border-radius: 6px;
+        width: 26px; height: 24px; font-size: 13px; padding: 0; flex-shrink: 0; cursor: pointer;
+      }
+      .stats-year-parts { font-size: 10px; color: #aaa; padding-left: 54px; margin: -1px 0 3px 0; }
+      .stats-year-edit-box { background: #f8fbff; border-radius: 8px; padding: 4px 6px; margin: 2px -6px; }
+      .stats-year-input { width: 84px; margin-top: 0; padding: 4px 8px; font-size: 14px; }
+      .stats-year-btn { flex: 0 0 auto; padding: 5px 12px; font-size: 12px; }
+      .stats-year-hint { font-size: 10px; color: #999; padding-left: 54px; margin-top: 2px; }
+      .stats-year-hint.ng { color: #e53935; }
       .stats-year-total { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #eee; font-size: 12px; color: #555; text-align: right; font-weight: bold; }
       .chip-selected { outline: 3px solid #4fc3f7; outline-offset: 1px; }
       .yearly-custom { background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
