@@ -1714,6 +1714,9 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
     const dated = (yearParts[k] && yearParts[k][year] && yearParts[k][year].dated) || 0;
     const bulk = desiredTotal - dated;
     if (!Number.isFinite(bulk) || bulk < 0) return false;
+    // 2026年以降は日付ごとに入力するので、一括入力は増やせない（以前にできた分を減らす・消すことだけ可能）
+    const curBulk = (yearParts[k] && yearParts[k][year] && yearParts[k][year].bulk) || 0;
+    if (year > YEARLY_MAX_YEAR && bulk > curBulk) return false;
     const keyOf = (r) => r.type + "|" + r.name + "|" + (r.color || "");
     // 新しく一括入力を作る場合に、同じ服の presetId を引き継ぐ
     const pid =
@@ -1916,7 +1919,7 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
                   {s.name}
                   <span className="statstype">（{clothingTypeName(s.type)}）</span>
                   {s.yearCount > 0 && (
-                    <span className="stats-unit">過去分（〜{YEARLY_MAX_YEAR}年）{s.yearCount}回を含む</span>
+                    <span className="stats-unit">一括入力分 {s.yearCount}回を含む</span>
                   )}
                   {(() => {
                     const price = priceOf(s);
@@ -1945,7 +1948,11 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
                     const total = totalOf(y);
                     const editing = editYear && editYear.key === itemKey && editYear.year === y;
                     const n = Math.round(Number(editVal));
-                    const valid = editVal !== "" && Number.isFinite(n) && n >= part.dated;
+                    // 編集できるのは2025年まで。2026年以降は日付ごとの入力のみ
+                    // （以前に一括入力ができていた場合だけ、それを減らす・消すために編集可）
+                    const lateYear = y > YEARLY_MAX_YEAR;
+                    const canEdit = !lateYear || part.bulk > 0;
+                    const valid = editVal !== "" && Number.isFinite(n) && n >= part.dated && (!lateYear || n <= total);
                     if (editing) {
                       return (
                         <div key={y} className="stats-year-edit-box">
@@ -1971,7 +1978,11 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
                             >保存</button>
                             <button className="evdel" onClick={() => setEditYear(null)}>✕</button>
                           </div>
-                          {part.dated > 0 && (
+                          {lateYear ? (
+                            <div className={"stats-year-hint" + (valid || editVal === "" ? "" : " ng")}>
+                              {YEARLY_MAX_YEAR + 1}年以降は日付ごとに入力します。一括入力分（{part.bulk}回）は減らす・消すことだけできます（{part.dated}〜{total}回）
+                            </div>
+                          ) : part.dated > 0 && (
                             <div className={"stats-year-hint" + (valid || editVal === "" ? "" : " ng")}>
                               日付つきの記録が{part.dated}回あるため、{part.dated}回より少なくはできません
                               {part.bulk > 0 ? `（一括入力は現在${part.bulk}回）` : ""}
@@ -1986,11 +1997,15 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
                           <span className="stats-year-label">{y}年</span>
                           <span className="stats-year-bar"><i style={{ width: `${(total / yearMax) * 100}%`, background: s.color || "#4fc3f7" }} /></span>
                           <b className="stats-year-count">{total}回</b>
-                          <button
-                            className="stats-year-edit"
-                            title="この年の回数を編集"
-                            onClick={() => { setEditYear({ key: itemKey, year: y }); setEditVal(String(total)); }}
-                          >✎</button>
+                          {canEdit ? (
+                            <button
+                              className="stats-year-edit"
+                              title="この年の回数を編集"
+                              onClick={() => { setEditYear({ key: itemKey, year: y }); setEditVal(String(total)); }}
+                            >✎</button>
+                          ) : (
+                            <span className="stats-year-edit-spacer" />
+                          )}
                         </div>
                         {part.dated > 0 && part.bulk > 0 && (
                           <div className="stats-year-parts">日付つき {part.dated}回 ＋ 一括入力 {part.bulk}回</div>
@@ -3356,6 +3371,7 @@ function Style() {
         border: none; background: #f0f0f0; color: #666; border-radius: 6px;
         width: 26px; height: 24px; font-size: 13px; padding: 0; flex-shrink: 0; cursor: pointer;
       }
+      .stats-year-edit-spacer { width: 26px; height: 24px; flex-shrink: 0; }
       .stats-year-parts { font-size: 10px; color: #aaa; padding-left: 54px; margin: -1px 0 3px 0; }
       .stats-year-edit-box { background: #f8fbff; border-radius: 8px; padding: 4px 6px; margin: 2px -6px; }
       .stats-year-input { width: 84px; margin-top: 0; padding: 4px 8px; font-size: 14px; }
