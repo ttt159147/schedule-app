@@ -10,7 +10,7 @@ const EVENT_COLORS = [
   "#f44336", "#e57373", "#f06292", "#ba68c8", "#9575cd",
   "#7986cb", "#64b5f6", "#4fc3f7", "#4dd0e1",
   "#4db6ac", "#81c784", "#aed581", "#ffd54f",
-  "#ffb74d", "#a1887f", "#212121", "#1a237e", "#616161",
+  "#ffb74d", "#a1887f", "#212121", "#1a237e", "#616161", "#5d4037",
 ];
 
 const CLOTHING_COLORS = [
@@ -334,7 +334,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28b</span></h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28c</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
