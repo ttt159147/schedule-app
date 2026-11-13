@@ -148,6 +148,32 @@ function tripKm(l) {
   return Math.max(0, Number(l.endOdo) - Number(l.startOdo));
 }
 
+/* 年の月平均走行距離
+   ・平均に含める月：2026年は8月から（7月以前は入力が無いため）、2027年以降は1月から
+   ・終わりの月：今年は今月まで、過去の年は12月まで
+   ・期間内で走行記録が無い月も0kmとして数える（1年を通した平均にするため） */
+const TRIP_AVG_FIRST = { year: 2026, month: 8 };
+function tripYearAverage(logs, year, now) {
+  const nowYear = now.getFullYear();
+  if (year > nowYear) return null;
+  const startMonth = year === TRIP_AVG_FIRST.year ? TRIP_AVG_FIRST.month : 1;
+  const endMonth = year === nowYear ? now.getMonth() + 1 : 12;
+  if (endMonth < startMonth) return null;
+  let total = 0;
+  logs.forEach((l) => {
+    if (!l.date || Number(l.date.slice(0, 4)) !== year) return;
+    const m = Number(l.date.slice(5, 7));
+    if (m < startMonth || m > endMonth) return;
+    total += tripKm(l);
+  });
+  const months = endMonth - startMonth + 1;
+  return { avg: total / months, total, months, startMonth, endMonth };
+}
+function tripAvgRangeLabel(a) {
+  const range = a.startMonth === a.endMonth ? `${a.startMonth}月` : `${a.startMonth}〜${a.endMonth}月`;
+  return `${range}・${a.months}か月`;
+}
+
 /* 服装の並び順：季節（全季節→春夏→春秋→秋冬）→ 部位（帽子→上→下→靴→バッグ）
    同じ区分の中は元の順番を保つ（安定ソート） */
 const SEASONS = [
@@ -334,7 +360,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28c</span></h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28d</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
@@ -2430,6 +2456,18 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
       }));
   }, [logs]);
 
+  // 月平均（今年・月別一覧の年ごと）
+  const thisYearAvg = tripYearAverage(logs, now.getFullYear(), now);
+  const yearAverages = useMemo(() => {
+    const map = {};
+    monthlyStats.forEach((m) => {
+      const y = Number(m.ym.slice(0, 4));
+      if (!(y in map)) map[y] = tripYearAverage(logs, y, now);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs, monthlyStats]);
+
   return (
     <div>
       <div className="car-summary">
@@ -2439,6 +2477,15 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
           ))}
         </div>
         <div className="car-stat"><div className="car-stat-val">{totalKm.toLocaleString()}<span className="car-stat-unit">km</span></div><div className="car-stat-label">走行距離</div></div>
+        {statPeriod === "year" && thisYearAvg && (
+          <div className="car-stat trip-avg-box">
+            <div className="car-stat-val" style={{fontSize:20}}>{Math.round(thisYearAvg.avg).toLocaleString()}<span className="car-stat-unit">km／月</span></div>
+            <div className="car-stat-label">月平均（{tripAvgRangeLabel(thisYearAvg)}）</div>
+            {now.getFullYear() === TRIP_AVG_FIRST.year && (
+              <div className="trip-avg-note">{TRIP_AVG_FIRST.month - 1}月以前は入力がないため、{TRIP_AVG_FIRST.month}月からの平均です</div>
+            )}
+          </div>
+        )}
         {monthlyStats.length > 0 && (
           <div style={{marginTop:10}}>
             <button className="btn ghost small" style={{width:"100%"}} onClick={() => setShowMonthly(v => !v)}>
@@ -2446,8 +2493,20 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
             </button>
             {showMonthly && (
               <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
-                {monthlyStats.map((m) => (
-                  <div key={m.ym} className="car-item" style={{padding:"10px 12px"}}>
+                {monthlyStats.map((m, idx) => {
+                  const y = Number(m.ym.slice(0, 4));
+                  const ya = idx === 0 || Number(monthlyStats[idx - 1].ym.slice(0, 4)) !== y ? yearAverages[y] : null;
+                  return (
+                  <React.Fragment key={m.ym}>
+                  {ya && (
+                    <div className="trip-year-header">
+                      <span className="trip-year-name">{y}年</span>
+                      <span className="trip-year-avg">月平均 <b>{Math.round(ya.avg).toLocaleString()}km</b>
+                        <span className="trip-year-range">（{tripAvgRangeLabel(ya)}）</span>
+                      </span>
+                    </div>
+                  )}
+                  <div className="car-item" style={{padding:"10px 12px"}}>
                     <div
                       className="car-item-row trip-month-header"
                       style={{justifyContent:"space-between"}}
@@ -2487,7 +2546,9 @@ function TripTab({ logs, onAdd, onDel, onUpd, presets }) {
                       </div>
                     )}
                   </div>
-                ))}
+                  </React.Fragment>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3393,6 +3454,16 @@ function Style() {
       .preset-price-input { width: 120px; margin-top: 0; padding: 5px 8px; font-size: 13px; }
       .stats-unit { display: block; font-size: 11px; color: #777; margin-top: 2px; font-weight: normal; }
       .stats-unit b { color: #e65100; }
+      .trip-avg-box { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; }
+      .trip-avg-note { font-size: 10px; color: #aaa; margin-top: 2px; }
+      .trip-year-header {
+        display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+        gap: 4px 8px; padding: 6px 4px 0 4px; margin-top: 4px;
+      }
+      .trip-year-name { font-weight: bold; font-size: 14px; color: #333; }
+      .trip-year-avg { font-size: 12px; color: #555; }
+      .trip-year-avg b { color: #1565c0; font-size: 14px; }
+      .trip-year-range { font-size: 10px; color: #999; }
       .trip-month-header { cursor: pointer; }
       .trip-month-arrow { display: inline-block; width: 18px; font-size: 10px; color: #999; }
       .trip-month-count { font-weight: normal; font-size: 11px; color: #999; margin-left: 4px; }
