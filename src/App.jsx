@@ -360,7 +360,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28e</span></h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28f</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
@@ -1506,6 +1506,8 @@ function ClothingPresetManagerModal({ presets, onClose, onSave, onSyncRecords })
 
 /* 2025年以前の着用回数を、年ごとに一括入力するモーダル */
 const YEARLY_MAX_YEAR = 2025;
+// 単価（円）がこの金額を下回った服は、集計で色を変えて表示する
+const CHEAP_UNIT_YEN = 100;
 
 function ClothingYearlyModal({ presets, yearly, setYearly, onClose }) {
   const years = Array.from({ length: 16 }, (_, i) => YEARLY_MAX_YEAR - i); // 2025〜2010
@@ -1832,15 +1834,14 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
 
   // カテゴリーごとにまとめる（帽子→上→下→靴→バッグ。種類を絞った時はその種類だけ）
   const groupedStats = useMemo(() => {
-    const known = CLOTHING_TYPES.map((t) => t.type);
-    const groups = CLOTHING_TYPES
-      .filter((t) => type === "all" || t.type === type)
-      .map((t) => ({ type: t.type, label: t.label, items: stats.filter((x) => x.type === t.type) }));
+    // 「全部」：カテゴリーに関係なく、使用回数の多い順に1つのリストで表示（見出しなし）
     if (type === "all") {
-      const others = stats.filter((x) => !known.includes(x.type));
-      if (others.length > 0) groups.push({ type: "other", label: "その他", items: others });
+      return stats.length > 0 ? [{ type: "all", label: null, items: stats, total: stats.reduce((sum, x) => sum + x.count, 0) }] : [];
     }
-    return groups
+    // 種類を絞った時：そのカテゴリーの見出し（種類数・合計）付きで表示
+    return CLOTHING_TYPES
+      .filter((t) => t.type === type)
+      .map((t) => ({ type: t.type, label: t.label, items: stats.filter((x) => x.type === t.type) }))
       .filter((g) => g.items.length > 0)
       .map((g) => ({ ...g, total: g.items.reduce((sum, x) => sum + x.count, 0) }));
   }, [stats, type]);
@@ -1945,10 +1946,12 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
           <div className="statslist">
             {groupedStats.map((g) => (
             <div key={g.type} className="stats-group">
+            {g.label && (
             <div className="stats-group-header">
               <span className="stats-group-name">{g.label}</span>
               <span className="stats-group-sum">{g.items.length}種類 ／ 合計 <b>{g.total.toLocaleString()}回</b></span>
             </div>
+            )}
             {g.items.map((s) => {
               const itemKey = s.type + "|" + s.name + "|" + (s.color || "");
               const years = yearParts[itemKey] || {};
@@ -1957,9 +1960,14 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
               const yearMax = Math.max(1, ...yearList.map(totalOf));
               const yearTotal = yearList.reduce((sum, y) => sum + totalOf(y), 0);
               const isOpen = !!openItems[itemKey];
+              // 単価＝購入金額 ÷ 累計の着用回数（表示と同じ丸め後の値で、100円未満かを判定）
+              const price = priceOf(s);
+              const lifeTotal = lifetimeCount[itemKey] || s.count;
+              const unit = price === null ? null : Math.round(price / lifeTotal);
+              const cheap = unit !== null && unit < CHEAP_UNIT_YEN;
               return (
               <div key={itemKey} className="statsitem-wrap">
-              <div className="statsitem statsitem-tap" onClick={() => toggleOpen(itemKey)}>
+              <div className={"statsitem statsitem-tap" + (cheap ? " statsitem-cheap" : "")} onClick={() => toggleOpen(itemKey)}>
                 <span className="stats-arrow">{isOpen ? "▼" : "▶"}</span>
                 <span className="evcolor" style={{ background: s.color }} />
                 <span className="evtitle">
@@ -1968,18 +1976,12 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
                   {s.yearCount > 0 && (
                     <span className="stats-unit">一括入力分 {s.yearCount}回を含む</span>
                   )}
-                  {(() => {
-                    const price = priceOf(s);
-                    if (price === null) return null;
-                    const total = lifetimeCount[s.type + "|" + s.name + "|" + (s.color || "")] || s.count;
-                    const unit = Math.round(price / total);
-                    return (
-                      <span className="stats-unit">
-                        購入 ¥{price.toLocaleString()} ／ 単価 <b>¥{unit.toLocaleString()}</b>
-                        {total !== s.count && <>（累計{total}回）</>}
-                      </span>
-                    );
-                  })()}
+                  {unit !== null && (
+                    <span className="stats-unit">
+                      購入 ¥{price.toLocaleString()} ／ 単価 <b>¥{unit.toLocaleString()}</b>
+                      {lifeTotal !== s.count && <>（累計{lifeTotal}回）</>}
+                    </span>
+                  )}
                 </span>
                 <span className="statscount">{s.count}回</span>
                 <span className="statslast">
@@ -3448,6 +3450,8 @@ function Style() {
       .stats-group-sum { font-size: 11px; color: #888; }
       .stats-group-sum b { color: #1565c0; font-size: 13px; }
       .statsitem-tap { cursor: pointer; }
+      .statsitem.statsitem-cheap { background: #e8f5e9; }
+      .statsitem-cheap .stats-unit b { color: #2e7d32; }
       .stats-arrow { font-size: 9px; color: #aaa; width: 10px; flex-shrink: 0; }
       .stats-years {
         background: #fff; border: 1px solid #eee; border-radius: 8px;
