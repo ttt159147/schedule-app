@@ -360,7 +360,7 @@ export default function App() {
       <Style />
       <header className="header">
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28d</span></h1>
+          <h1>スケジュール <span style={{fontSize:10, color:"#bbb", fontWeight:"normal"}}>v2026.10.28e</span></h1>
           <button className="backup-btn" onClick={() => setShowBackup(true)} title="バックアップ">💾 バックアップ</button>
         </div>
         <div className="tabbar">
@@ -1830,6 +1830,21 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
     return Object.values(map).sort((a, b) => b.count - a.count);
   }, [logs, yearly, period, type, selectedMonth]);
 
+  // カテゴリーごとにまとめる（帽子→上→下→靴→バッグ。種類を絞った時はその種類だけ）
+  const groupedStats = useMemo(() => {
+    const known = CLOTHING_TYPES.map((t) => t.type);
+    const groups = CLOTHING_TYPES
+      .filter((t) => type === "all" || t.type === type)
+      .map((t) => ({ type: t.type, label: t.label, items: stats.filter((x) => x.type === t.type) }));
+    if (type === "all") {
+      const others = stats.filter((x) => !known.includes(x.type));
+      if (others.length > 0) groups.push({ type: "other", label: "その他", items: others });
+    }
+    return groups
+      .filter((g) => g.items.length > 0)
+      .map((g) => ({ ...g, total: g.items.reduce((sum, x) => sum + x.count, 0) }));
+  }, [stats, type]);
+
   // 円グラフ用：月別 or トータルの切り替え
   const [chartPeriod, setChartPeriod] = useState("month"); // month | all
   const chartStats = useMemo(() => {
@@ -1928,7 +1943,13 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
 
           {stats.length === 0 && <div className="empty">記録がありません</div>}
           <div className="statslist">
-            {stats.map((s) => {
+            {groupedStats.map((g) => (
+            <div key={g.type} className="stats-group">
+            <div className="stats-group-header">
+              <span className="stats-group-name">{g.label}</span>
+              <span className="stats-group-sum">{g.items.length}種類 ／ 合計 <b>{g.total.toLocaleString()}回</b></span>
+            </div>
+            {g.items.map((s) => {
               const itemKey = s.type + "|" + s.name + "|" + (s.color || "");
               const years = yearParts[itemKey] || {};
               const yearList = Object.keys(years).map(Number).sort((a, b) => a - b);
@@ -2045,6 +2066,8 @@ function ClothingStatsModal({ logs, presets, yearly, setYearly, onClose }) {
               </div>
               );
             })}
+            </div>
+            ))}
           </div>
         </>
       )}
@@ -3416,6 +3439,14 @@ function Style() {
       .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
       .more { font-size: 9px; color: #999; }
       .cal-check { color: #4caf50; font-size: 13px; font-weight: bold; margin-top: 2px; }
+      .stats-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+      .stats-group-header {
+        display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+        gap: 2px 8px; padding: 6px 4px 2px 4px; border-bottom: 2px solid #e3f2fd;
+      }
+      .stats-group-name { font-weight: bold; font-size: 14px; color: #333; }
+      .stats-group-sum { font-size: 11px; color: #888; }
+      .stats-group-sum b { color: #1565c0; font-size: 13px; }
       .statsitem-tap { cursor: pointer; }
       .stats-arrow { font-size: 9px; color: #aaa; width: 10px; flex-shrink: 0; }
       .stats-years {
